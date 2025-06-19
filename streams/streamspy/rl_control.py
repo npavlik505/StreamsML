@@ -61,47 +61,6 @@ def copy_config(path: str) -> Config:
         cfg = json.load(f)
     return Config.from_json(cfg)
 
-class ReplayBufferCustom(ReplayBuffer):
-    """Replay buffer with configurable max size."""
-
-    def __init__(self, state_dim: int, action_dim: int, max_size: int) -> None:
-        super().__init__(state_dim, action_dim)
-        self.max_size = max_size
-        self.s = torch.zeros((self.max_size, state_dim))
-        self.a = torch.zeros((self.max_size, action_dim))
-        self.r = torch.zeros((self.max_size, 1))
-        self.s_ = torch.zeros((self.max_size, state_dim))
-
-
-def ddpg_update(agent: ddpg, buffer: ReplayBuffer) -> Tuple[float, float]:
-    """Perform one DDPG update step and return (actor_loss, critic_loss)."""
-    batch_s, batch_a, batch_r, batch_s_ = buffer.sample(agent.batch_size)
-    with torch.no_grad():
-        q_next = agent.critic_target(batch_s_, agent.actor_target(batch_s_))
-        target_q = batch_r + agent.GAMMA * q_next
-    current_q = agent.critic(batch_s, batch_a)
-    critic_loss = agent.MseLoss(target_q, current_q)
-    agent.critic_optimizer.zero_grad()
-    critic_loss.backward()
-    agent.critic_optimizer.step()
-
-    for p in agent.critic.parameters():
-        p.requires_grad = False
-    actor_loss = -agent.critic(batch_s, agent.actor(batch_s)).mean()
-    agent.actor_optimizer.zero_grad()
-    actor_loss.backward()
-    agent.actor_optimizer.step()
-    for p in agent.critic.parameters():
-        p.requires_grad = True
-
-    for param, target_param in zip(agent.critic.parameters(), agent.critic_target.parameters()):
-        target_param.data.copy_(agent.TAU * param.data + (1 - agent.TAU) * target_param.data)
-    for param, target_param in zip(agent.actor.parameters(), agent.actor_target.parameters()):
-        target_param.data.copy_(agent.TAU * param.data + (1 - agent.TAU) * target_param.data)
-
-    return actor_loss.item(), critic_loss.item()
-
-
 def save_checkpoint(agent: ddpg, directory: Path, tag: str) -> None:
     """Save actor and critic weights."""
     directory.mkdir(parents=True, exist_ok=True)
@@ -121,7 +80,7 @@ def train(env: StreamsGymEnv, agent: ddpg, args: argparse.Namespace) -> Path:
     action_dim = env.action_space.shape[0]
     
     # print("[rl_control.py] Define object for replay buffer")
-    buffer = ReplayBufferCustom(state_dim, action_dim, args.buffer_size)
+    buffer = ReplayBuffer(state_dim, action_dim, args.buffer_size)
     
     # print("[rl_control.py] Define reward objects")
     best_reward = -float("inf")

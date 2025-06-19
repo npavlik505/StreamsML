@@ -50,9 +50,9 @@ class Critic(nn.Module):  # According to (s,a), directly calculate Q(s,a)
 
 # Replay buffer stores 1000 state, action, reward, next state, change in weights (S,A,R,S_,dw) data sets
 class ReplayBuffer(object):
-    #Specifies max number of SARSdW collected (max_size) and creates matrices to store the collected data
-    def __init__(self, state_dim, action_dim):
-        self.max_size = int(1e6)
+    # Specifies max number of SARSA tuples collected (max_size) and creates matrices to store the collected data
+    def __init__(self, state_dim: int, action_dim: int, max_size: int = int(1e6)):
+        self.max_size = max_size
         self.count = 0
         self.size = 0
         self.s = torch.zeros((self.max_size, state_dim))
@@ -176,3 +176,5 @@ class ddpg(object):
 
         for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
             target_param.data.copy_(self.TAU * param.data + (1 - self.TAU) * target_param.data)
+
+        return actor_loss.item(), critic_loss.item()
