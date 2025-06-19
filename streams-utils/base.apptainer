@@ -1,0 +1,54 @@
+Bootstrap: localimage
+From: nv.sandbox
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+
+    echo "=== Enabling snapshot support in sources.list ==="
+    # Insert [snapshot=yes] immediately after 'deb'
+    sed -i 's|^deb |deb [snapshot=yes] |' /etc/apt/sources.list
+    sed -i 's|^deb-src |deb-src [snapshot=yes] |' /etc/apt/sources.list
+
+    echo "=== Updating package lists using snapshot ==="
+    apt update --snapshot 20250419T000000Z
+
+    echo "=== Installing base packages ==="
+    apt install -y \
+        curl libssl-dev pkg-config git \
+        python3 python3-dev python3-pip \
+        libhdf5-mpi-dev openmpi-bin openmpi-common libopenmpi-dev \
+        build-essential \
+        --snapshot 20250419T000000Z
+
+    echo "=== Cleaning pip cache ==="
+    pip3 cache purge
+
+    echo "=== Upgrading pip, setuptools, wheel ==="
+    pip3 install --upgrade pip setuptools wheel
+
+    echo "=== Installing numpy and mpi4py ==="
+    CFLAGS=-noswitcherror pip3 install numpy mpi4py --upgrade
+
+    echo "=== Cloning and building h5py with MPI support ==="
+    cd /
+    git clone https://github.com/h5py/h5py --depth 1
+    cd h5py
+    export CC=mpicc
+    export HDF5_MPI=ON
+    CFLAGS=-noswitcherror pip3 install --no-binary=h5py .
+
+    echo "=== Verifying h5py build ==="
+    cd /
+    python3 -c "import h5py; print('h5py version:', h5py.__version__); print('MPI support:', getattr(h5py.get_config(), 'mpi', 'Unavailable'))"
+
+    echo "=== Installing PyTorch stack ==="
+    pip3 install --no-cache-dir torch torchvision torchaudio gymnasium
+
+    echo "=== Checking GPU availability in PyTorch ==="
+    python3 -c "import torch; print('GPU available:', torch.cuda.is_available())"
+
+    echo "=== Installing Rust via rustup (pinned) ==="
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.74.1
+    export PATH="$HOME/.cargo/bin:$PATH"
+    echo "Rust installed at: $(which cargo)"
+

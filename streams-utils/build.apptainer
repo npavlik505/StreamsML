@@ -1,0 +1,134 @@
+Bootstrap: localimage
+From: base.sandbox
+Stage: build
+
+# before running the build script you must run
+# sh ./prepare-build.sh
+
+# https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nvhpc
+
+%files
+	${STREAMS_DIR} /streams
+	# ${STREAMS_UTILS_DIR}/libstreamsMin.pyf ${STREAMS_DIR}/src/libstreamsMin.pyf
+	# ${STREAMS_UTILS_DIR}/libstreamsMod.pyf ${STREAMS_DIR}/src/libstreamsMod.pyf
+	${STREAMS_UTILS_DIR}/src/ /streams-utils/src
+	${STREAMS_UTILS_DIR}/Cargo.toml /streams-utils/Cargo.toml
+	${STREAMS_UTILS_DIR}/Cargo.lock /streams-utils/Cargo.lock
+	${STREAMS_UTILS_DIR}/patch_pyf.py /streams-utils/patch_pyf.py
+
+%post
+	echo "NUMPY VERSION:"
+	pip freeze | grep numpy
+
+	echo "$HOME"
+
+	# hack to add cargo to path
+	export PATH="$PATH":"$HOME/.cargo/bin"
+
+
+	# make streams
+	cd /streams/src
+	# replace (in the makefile)
+	# COMPILE = "gnu"
+	# with
+	# COMPILE = "nvfortran"
+	bash -c 'cat Makefile | sed "s/COMPILE = \"gnu\"/COMPILE = \"nvfortran\"/" &> Makefile2'
+	# for some reason singularity does not like us directly piping the output of
+	# ./Makefile to ./Makefile so we have to use this workaround
+	mv Makefile2 Makefile
+	make clean
+	make
+	ls -al
+
+	# Temp - to debug libstreams (fallback path)
+	/bin/echo "🛠️  Copying debug files to /debuglib"
+	mkdir -p /debuglib
+	cp /streams/src/*.F90 /debuglib/ || true
+	cp /streams/src/*.o /debuglib/ || true
+	cp /streams/src/*.mod /debuglib/ || true
+
+	echo "COMPILED STREAMS FILES!"
+	echo "compiling python extensions"
+
+	#Expliclitly set patht to nvidia’s mpi software
+	# Define the correct MPI installation path
+	export MPI_HOME=/opt/nvidia/hpc_sdk/Linux_x86_64/24.7/comm_libs/12.5/hpcx/hpcx-2.19/ompi
+	# Ensure FPATH includes the correct directory for mpi.mod
+	export FPATH=$MPI_HOME/lib:$FPATH
+	# Ensure CPATH includes MPI headers
+	export CPATH=$MPI_HOME/include:$CPATH
+	# Ensure LIBRARY_PATH includes MPI libraries
+	export LIBRARY_PATH=$MPI_HOME/lib:$LIBRARY_PATH
+	# Ensure LD_LIBRARY_PATH includes MPI libraries
+	export LD_LIBRARY_PATH=$MPI_HOME/lib:$LD_LIBRARY_PATH
+
+
+	# copy the linking flags that we used for STREAMS in the makefile
+	# This is the first occurance of `OLEVEL` in the file,
+	# then use `sed` to remove leading whitespace and `OLEVEL` w/ optimization level
+	# here \s* denotes any whitespace
+	# Extract flags from Makefile (remove the -O3 and "OLEVEL =" part)
+	FLAGS=$(grep "^\s*OLEVEL" Makefile | head -n 1 | sed -E "s/^\s*OLEVEL\s*=\s*-[O0-3]+\s*//g")
+	echo "setting compile flags for F2PY to be $FLAGS"
+
+	# Set flags for f2py in a one-liner call to make f2py
+	cd /streams/src
+	pwd
+	LDFLAGS="$FLAGS" FFLAGS="$FLAGS" NPY_DISTUTILS_APPEND_FLAGS=1 make f2py
+	ls -al libstreams*.so || { echo "libstreams.so missing!"; exit 1; }
+
+	echo "🔎 nm on libstreams:"
+	nm -D libstreams*.so | grep mod_streams || echo "mod_streams not linked"
+
+
+	# Copy libstreams and verify contents, import, and location
+	cd /streams/src
+	cp libstreams*.so /usr/local/lib/python3.10/dist-packages/
+	echo "📦 Listing built shared objects:"
+	python3 -c "import sys; print('Python sys.path:', sys.path)"
+	python3 -c "import libstreams; print('✅ libstreams imported successfully')"
+	find . -name "libstreams*.so" -exec ls -l {} \;
+
+	# make streams-utils
+	echo "Fortran compiler: $(which nvfortran)"
+	nvfortran --version
+	cd /streams-utils
+	FC=nvfortran cargo build --release
+
+Bootstrap: localimage
+From: base.sandbox 
+# use base here so that we have access to python still
+	
+%files from build
+	/streams-utils/target/release/streams-utils /streams-utils
+	/streams/src/streams.exe /streams.exe
+
+	# python files to run streams
+	/streams/src/libstreams*.so /libstreams.so
+
+	# copy python source code into container
+	/streams/streamspy/ /streamspy
+	/streams/pyproject.toml /
+
+	# Debug files
+	/debuglib /debuglib
+
+%post
+
+	echo "NUMPY VERSION:"
+	pip freeze | grep numpy
+
+	# copy the shared object to site packages so it is globally importable
+	cp /libstreams* /usr/local/lib/python3.10/dist-packages/
+
+        # ✅ make libstreams.so available for runtime linking
+        cp /libstreams.so /usr/lib/
+
+	ls /usr/local/lib/python3.10/dist-packages/
+
+%apprun distribute
+	cd /
+	ls -al
+
+	# doing the rest of the stuff
+	/streams-utils run-container

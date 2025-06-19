@@ -1,0 +1,56 @@
+!    -*- f90 -*-
+! Note: the context of this file is case sensitive.
+
+python module libstreams ! in 
+    interface  ! in :libstreams
+        subroutine wrap_startmpi ! in :libstreams:min_api.F90
+            intent(c) wrap_startmpi
+        end subroutine wrap_startmpi
+        subroutine wrap_setup ! in :libstreams:min_api.F90
+            intent(c) wrap_setup
+            use mod_streams, only: tauw_x
+        end subroutine wrap_setup
+        subroutine wrap_init_solver ! in :libstreams:min_api.F90
+            intent(c) wrap_init_solver
+        end subroutine wrap_init_solver
+        subroutine wrap_step_solver ! in :libstreams:min_api.F90
+            intent(c) wrap_step_solver
+        end subroutine wrap_step_solver
+        subroutine wrap_finalize_solver ! in :libstreams:min_api.F90
+            intent(c) wrap_finalize_solver
+        end subroutine wrap_finalize_solver
+        subroutine wrap_finalize ! in :libstreams:min_api.F90
+            intent(c) wrap_finalize
+            use mod_streams
+        end subroutine wrap_finalize
+        subroutine wrap_copy_gpu_to_cpu ! in :libstreams:min_api.F90
+            intent(c) wrap_copy_gpu_to_cpu
+        end subroutine wrap_copy_gpu_to_cpu
+        subroutine wrap_copy_cpu_to_gpu ! in :libstreams:min_api.F90
+            intent(c) wrap_copy_cpu_to_gpu
+        end subroutine wrap_copy_cpu_to_gpu
+        subroutine wrap_copy_blowing_bc_to_gpu ! in :libstreams:min_api.F90
+            intent(c) wrap_copy_blowing_bc_to_gpu
+        end subroutine wrap_copy_blowing_bc_to_gpu
+        subroutine wrap_copy_blowing_bc_to_cpu ! in :libstreams:min_api.F90
+            intent(c) wrap_copy_blowing_bc_to_cpu
+        end subroutine wrap_copy_blowing_bc_to_cpu
+        subroutine wrap_tauw_calculate ! in :libstreams:min_api.F90
+            intent(c) wrap_tauw_calculate
+            use mod_streams, only: tauw_x,w_av,mykind,y,nx,ny,ncoords,masterproc
+        end subroutine wrap_tauw_calculate
+        subroutine wrap_dissipation_calculation ! in :libstreams:min_api.F90
+            intent(c) wrap_dissipation_calculation
+        end subroutine wrap_dissipation_calculation
+        subroutine wrap_energy_calculation ! in :libstreams:min_api.F90
+            intent(c) wrap_energy_calculation
+        end subroutine wrap_energy_calculation
+        subroutine wrap_deallocate_all ! in :libstreams:min_api.F90
+            intent(c) wrap_deallocate_all
+        end subroutine wrap_deallocate_all
+    end interface 
+end python module libstreams
+
+! This file was auto-generated with f2py (version:1.26.4).
+! See:
+! https://web.archive.org/web/20140822061353/http://cens.ioc.ee/projects/f2py2e

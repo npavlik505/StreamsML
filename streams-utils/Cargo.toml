@@ -1,0 +1,46 @@
+[package]
+name = "streams-utils"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+byteorder = "1.4.3"
+clap = { version = "4.0.0", features = ["derive"] }
+derive_more = "0.99.17"
+ndarray = "0.15.4"
+serde = { version = "1.0.136", features = ["derive"] }
+serde_json = "1.0.79"
+thiserror = "1.0.38"
+walkdir = "2.3.2"
+rayon = "1.5.1"
+anyhow = "1.0.65"
+xshell = "0.2.2"
+hdf5 = "0.8.1"
+hdf5-sys = { version = "0.8.1", features = ["static"] }
+# hdf5-sys = { version = "0.8.1", features = ["mpi"] }
+itertools = "0.10.5"
+
+[dependencies.vtk]
+git = "https://github.com/Fluid-Dynamics-Group/vtk"
+rev = "57a18eafc3bade61fcc69cf9959a9bd06e315fda"
+
+[dependencies.distribute]
+#path = "../distribute"
+git = "https://github.com/Fluid-Dynamics-Group/distribute"
+rev = "1fed54eb8d98daae865f3ab429f6fc15957750e8"
+default_features = false
+features = ["config"]
+
+[dependencies.mat5]
+git = "https://github.com/Fluid-Dynamics-Group/mat5"
+branch = "master"
+
+[profile.release]
+debug = true
+
+# TODO: I think this may need to go in a .cargo file
+#[target.x86_64-unknown-linux-gnu]
+#linker = "/usr/bin/clang"
+#rustflags = ["-Clink-arg=-fuse-ld=lld", "-Clink-arg=-Wl,--no-rosegment"]
