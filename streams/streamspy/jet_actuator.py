@@ -1,5 +1,5 @@
 import numpy as np
-from config import Config, JetMethod, Jet
+from config import Config, Jet
 import libstreams as streams
 from abc import ABC, abstractmethod
 from typing import Optional, Dict
@@ -214,9 +214,9 @@ class AdaptiveActuator(AbstractActuator):
 def init_actuator(rank: int, config: Config) -> AbstractActuator:
     jet_config = config.jet
 
-    if jet_config.jet_method == JetMethod.none:
+    if jet_config.jet_method == none:
         return NoActuation()
-    elif jet_config.jet_method == JetMethod.constant:
+    elif jet_config.jet_method == constant:
         # print(jet_config.extra_json)
         # these should be guaranteed to exist in the additional json information
         # so we can essentially ignore the errors that we have here
@@ -225,7 +225,7 @@ def init_actuator(rank: int, config: Config) -> AbstractActuator:
         amplitude = jet_config.extra_json["amplitude"]
 
         return ConstantActuator(amplitude, slot_start, slot_end, rank, config);
-    elif jet_config.jet_method == JetMethod.sinusoidal:
+    elif jet_config.jet_method == sinusoidal:
         # print(jet_config.extra_json)
         # these should be guaranteed to exist in the additional json information
         # so we can essentially ignore the errors that we have here
@@ -235,7 +235,7 @@ def init_actuator(rank: int, config: Config) -> AbstractActuator:
         angular_frequency = jet_config.extra_json["angular_frequency"]
 
         return SinusoidalActuator(amplitude, slot_start, slot_end, rank, config, angular_frequency);
-    elif jet_config.jet_method == JetMethod.DMDc:
+    elif jet_config.jet_method == DMDc:
         # print(jet_config.extra_json)
         # these should be guaranteed to exist in the additional json information
         # so we can essentially ignore the errors that we have here
@@ -244,7 +244,7 @@ def init_actuator(rank: int, config: Config) -> AbstractActuator:
         amplitude = jet_config.extra_json["amplitude"]
 
         return DMDcActuator(amplitude, slot_start, slot_end, rank, config);
-    elif jet_config.jet_method == JetMethod.adaptive:
+    elif jet_config.jet_method == adaptive:
         # print(jet_config.extra_json)
         # these should be guaranteed to exist in the additional json information
         # so we can essentially ignore the errors that we have here

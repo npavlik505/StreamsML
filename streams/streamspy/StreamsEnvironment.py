@@ -58,6 +58,7 @@ class StreamsGymEnv(gymnasium.Env):
         # Parse, and later access the entries of, input.json using config
         with open("/input/input.json", "r") as f:
             cfg_json = json.load(f)
+            # print(f'cfg_json: {json.dumps(cfg_json, indent = 2)}')
             self.config = Config.from_json(cfg_json)
 
         # Allocate Arrays
@@ -101,21 +102,22 @@ class StreamsGymEnv(gymnasium.Env):
         # Initialize actuator
         self.actuator = jet_actuator.init_actuator(self.rank, self.config)
 
-        # Observation Space (Determine what resonable bounds are)
-        # Observation = τw(x) ∈ R^{nx}.  We bound it loosely between [-100, +100] per point.
-        high_obs = np.full((self.nx,), 100.0, dtype=np.float32)
-        self.observation_space = spaces.Box(low=-high_obs,
-                                            high=+high_obs,
-                                            shape=(self.nx,),
-                                            dtype=np.float32)
+        if self.config.jet.jet_method == "LearningBased":
+            # Observation Space (Determine what resonable bounds are)
+            # Observation = τw(x) ∈ R^{nx}.  We bound it loosely between [-100, +100] per point.
+            high_obs = np.full((self.nx,), 100.0, dtype=np.float32)
+            self.observation_space = spaces.Box(low=-high_obs,
+                                                high=+high_obs,
+                                                shape=(self.nx,),
+                                                dtype=np.float32)
 
-        # Action Space (Bounds determined from input.json, extracted upon actuator initialization above)
-        # Action = single continuous amplitude ∈ [ -max_amplitude, +max_amplitude ]
-        self.max_amplitude = float(self.actuator.amplitude)
-        self.action_space = spaces.Box(low=np.array([-self.max_amplitude], dtype=np.float32),
-                                       high=np.array([+self.max_amplitude], dtype=np.float32),
-                                       shape=(1,),
-                                       dtype=np.float3
+            # Action Space (Bounds determined from input.json, extracted upon actuator initialization above)
+            # Action = single continuous amplitude ∈ [ -max_amplitude, +max_amplitude ]
+            self.max_amplitude = float(self.actuator.amplitude)
+            self.action_space = spaces.Box(low=np.array([-self.max_amplitude], dtype=np.float32),
+                                           high=np.array([+self.max_amplitude], dtype=np.float32),
+                                           shape=(1,),
+                                           dtype=np.float3)
 
         # Step counting and time
         self.step_count = 0
@@ -253,9 +255,6 @@ class StreamsGymEnv(gymnasium.Env):
         # Update time
         dt = float(streams.wrap_get_dtglobal())
         self.current_time += dt
-        # (Re-implement if gym used for main loop)
-        # self.dt_dset.write_array(np.array([dt], dtype=np.float32))
-        # self.amplitude_dset.write_array(np.array([amp], dtype=np.float32))
 
         # copy gpu to cpu and calculate tau
         streams.wrap_copy_gpu_to_cpu()

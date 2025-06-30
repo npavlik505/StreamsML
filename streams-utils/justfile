@@ -64,22 +64,23 @@ config:
 		--use-python \
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
-		adaptive \
-			--amplitude 1.0 \
+		learning-based \
 			--slot-start 100 \
 			--slot-end 149 \
 			--train-episodes 2 \
 			--training-output {{training}} \
 			--eval-episodes 2 \
-			--eval-max-steps 6 \ # Included for future work. Right now --eval-max-steps = training steps = --steps, regardless of option input.
+			--eval-max-steps 6 \
 			--eval-output {{eval}} \
 			--checkpoint-interval 5 \
 			--checkpoint-dir {{checkpoint}} \
-			--seed 42 \
-			--learning-rate 0.0003 \
-			--gamma 0.99 \
-			--tau 0.005 \
-			--buffer-size 100000 \
+			ddpg \
+				--seed 42 \
+				--amplitude 1.0 \
+				--learning-rate 0.0003 \
+				--gamma 0.99 \
+				--tau 0.005 \
+				--buffer-size 100000 \
 
 	cat {{config_output}}
 

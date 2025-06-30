@@ -2,6 +2,7 @@ use crate::prelude::*;
 
 use super::create_dirs;
 use super::postprocess;
+use serde_json::Value;
 
 /// running routine for the solver once activated within the container
 pub(crate) fn run_container(_args: cli::RunContainer) -> anyhow::Result<()> {
@@ -22,7 +23,7 @@ pub(crate) fn run_container(_args: cli::RunContainer) -> anyhow::Result<()> {
     let file = fs::File::open(&path)
         .with_context(|| format!("failed to open input.json file at {}", path.display()))?;
 
-    let config: Config = serde_json::from_reader(file)?;
+    let config: Config = serde_json::from_reader(file)?; 
 
     // change the current working directory to the distribute_save directory. That way, all the
     // file that we need to run and work with will be output here
@@ -58,7 +59,7 @@ pub(crate) fn run_container(_args: cli::RunContainer) -> anyhow::Result<()> {
             static_py
         };
 
-        let exec = xshell::cmd!(sh, "mpirun -np {nproc} {solver_py}/main.py");
+        let exec = xshell::cmd!(sh, "mpirun -np {nproc} python3 {solver_py}/main.py");
 
         println!("Now running solver, STDOUT will be hidden until it finishes");
         exec.run()?;

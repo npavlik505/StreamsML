@@ -1,21 +1,28 @@
-#! /usr/bin/python3
+#!/usr/bin/env python3
 # Run STREAmS using the gymnasium environment wrapper
 
-import json
+import json # collects values from input.json fields, converts them to a nested Python dictionary, which is then converted into a Config object (e.g. config.temporal.num_iter)
 import os
 import runpy
 from pathlib import Path
 
 import numpy as np
-
+print("Made it back to main.py")
 from StreamsEnvironment import StreamsGymEnv
 
+env = StreamsGymEnv()
+
 # If the configuration requests the adaptive jet, delegate to ``rl_control.py``
-with open("/input/input.json", "r") as f:
-    _cfg = json.load(f)
-if _cfg.get("blowing_bc", "").casefold() != "adaptive":
+# print('we are here')
+# with open("/input/input.json", "r") as f:
+#    cfg_json = json.load(f)
+#    cfg = Config.from_json(cfg_json)
+#    print(cfg.jet.jet_method)
+# if cfg.jet.jet_method != "LearningBased":
+if env.config.jet.jet_method != "LearningBased":
+
     # Instantiate environment and prep h5 files for standard datasets
-    env = StreamsGymEnv()
+    # env = StreamsGymEnv()
     env.init_h5_io()
 
     # Main solver loop
@@ -29,18 +36,17 @@ if _cfg.get("blowing_bc", "").casefold() != "adaptive":
     # Finalize solver and MPI
     env.close_h5_io()
     env.close()
+    exit()
 
 else:
     # General imports
     import argparse # Used for attribute access, defining default values and data-type, and providing ready made help calls
-    import json # collects values from input.json fields, converts them to a nested Python dictionary, which is then converted into a Config object (e.g. config.temporal.num_iter)
+    import json
     import logging
-    import os
     import shutil
     import signal
     from pathlib import Path
     from typing import Tuple
-    import numpy as np
     import torch
     # from tqdm import trange (progress bar, could be a nice touch eventually)
     from mpi4py import rc
@@ -48,7 +54,6 @@ else:
     from mpi4py import MPI
 
     # Script imports
-    from StreamsEnvironment import StreamsGymEnv
     from DDPG import ddpg, ReplayBuffer
     from config import Config, JetMethod
     import io_utils
@@ -62,9 +67,7 @@ else:
         STOP = True
         LOGGER.info("Received interrupt signal. Stopping after current episode...")
 
-
     signal.signal(signal.SIGINT, _signal_handler)
-
 
     def setup_logging() -> None:
         """Configure root logger to log to console and file."""
@@ -78,21 +81,6 @@ else:
         ch.setFormatter(fmt)
         LOGGER.addHandler(fh)
         LOGGER.addHandler(ch)
-
-    # Collects values from input.json, assigning them to python objects
-    def copy_config(path: str) -> Config:
-        """Copy config to /input/input.json and return Config object.
-
-        If the source config is already located at ``/input/input.json`` the file is
-        read directly to avoid a ``SameFileError`` from ``shutil.copy2``.
-        """
-        os.makedirs("/input", exist_ok=True) # Ensures input directory exists
-        dst = "/input/input.json"
-        if os.path.abspath(path) != os.path.abspath(dst):
-            shutil.copy2(path, dst)  # Copies in file in path (used for output/input.json) to /input/input.json
-        with open(dst, "r") as f: # Opens input.json, collects values within as a python dictionary, assigns them to Python objects
-            cfg = json.load(f)
-        return Config.from_json(cfg)
 
     def save_checkpoint(agent: ddpg, directory: Path, tag: str) -> None:
         """Save actor and critic weights."""
@@ -277,7 +265,7 @@ else:
     def parse_args() -> argparse.Namespace:
         """Parse command line arguments."""
         parser = argparse.ArgumentParser(description="DDPG control for STREAmS")
-        parser.add_argument("--config", type=str, default="/input/input.json", help="Path to input.json")
+        parser.add_argument("--config", type=str, default="/output/input.json", help="Path to input.json")
         parser.add_argument("--train-episodes", type=int, default=10)
         parser.add_argument("--eval-episodes", type=int, default=5)
         parser.add_argument("--eval-max-steps", type=int, default=1000)
@@ -296,8 +284,8 @@ else:
     if __name__ == "__main__":
         setup_logging()
         args = parse_args() # instance of parser assigned to object args 
-        config = copy_config(args.config) # use copy_config() function, built above, to collect input.json entries and assign to config
-        extras = config.jet.extra_json or {} # assign the blowing-bc options from input.json to extras as a dictionary
+        config = Config.from_json(args.config)
+        extras = {**(config.jet.jet_gen_json or {}), **(config.jet.jet_alg_json or {}), } # assign the blowing-bc options from input.json to extras as a dictionary
         
         # Create an Python dictionary. While key and value are identical here, only the _overrides key must match the extras key collected from input.json entry
         _overrides = {
@@ -322,8 +310,8 @@ else:
             setattr(args, arg_name, extras[json_key])
 
     # Double check that the blowing-bc = adaptive, and exit false
-    if config.jet.jet_method != JetMethod.adaptive:
-        LOGGER.error("JetMethod is not Adaptive. Exiting RL controller.")
+    if config.jet.jet_method != LearningBased:
+        LOGGER.error("JetMethod is not LearningBased. Exiting RL controller.")
         exit(1)
 
     # Generate random number via torch. Not used now but present for future restart use.
@@ -333,7 +321,7 @@ else:
     # Use GPU if available. Currently only used for open-loop control
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    env = StreamsGymEnv() # Import Streams Gym Environment
+    # env = StreamsGymEnv() # Import Streams Gym Environment
     state_dim = env.observation_space.shape[0] # Collect the state dimension (tau x, equal to x grid dim)
     action_dim = env.action_space.shape[0] # Collect the action dimension (integer valued jet amplitude)
     max_action = float(env.action_space.high[0]) # Specified in justfile

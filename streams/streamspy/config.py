@@ -110,34 +110,49 @@ class Physics():
 
         return Physics(mach, reynolds_friction, temp_ratio, visc_type, Tref, turb_inflow)
 
-@unique
-class JetMethod(Enum):
-    none = "None"
-    constant = "Constant"
-    sinusoidal = "Sinusoidal"
-    DMDc = "DMDc"
-    adaptive = "Adaptive"
+from typing import Any, Dict, Optional
 
-class Jet():
-    def __init__(self, jet_method: JetMethod, extra_json: Optional[Dict]):
-        self.jet_method = jet_method
-        self.extra_json = extra_json
+
+class Jet:
+    """
+    jet_gen_json  – parameters that describe *how* the jet is generated
+                    (slot positions, episode counts, …)
+    jet_alg_json  – hyper-parameters of the learning/open-loop/algo itself
+                    (seed, LR, gamma, …)
+    """
+    def __init__(self, jet_method: str, extra_json1: Optional[Dict[str, Any]], extra_json2: Optional[Dict[str, Any]], ):
+        self.jet_method   = jet_method
+        self.jet_gen_json = extra_json1
+        self.jet_alg_json = extra_json2
 
     @staticmethod
-    def from_json(json_config: Dict[str, Any]):
+    def from_json(json_config: Dict[str, Any]) -> "Jet":
         jet = json_config["blowing_bc"]
+        jet_method_str = next(iter(jet))       # "None", "LearningBased", …
 
-        if jet == "None":
-            jet_method_str = "None"
-            extra_json = None
-        else:
-            jet_method_str = list(jet.keys())[0]
-            extra_json = jet[jet_method_str]
+        if jet_method_str == "None":
+            return Jet(jet_method_str, None, None)
+            
+        if jet_method_str == "OpenLoop":
+            return Jet(jet_method_str, None, None)
+        
+        if jet_method_str == "Classical":
+            return Jet(jet_method_str, None, None)
 
-        jet_method = JetMethod(jet_method_str)
-        print(jet_method)
+        if jet_method_str == "LearningBased":
+            lb_cfg = jet["LearningBased"]
 
-        return Jet(jet_method, extra_json)
+            # everything *except* the algorithm sub-tree
+            gen_cfg = {k: v for k, v in lb_cfg.items()
+                       if k != "learning_based_algorithm"}
+
+            # unwrap the single algorithm (e.g. "DDPG")
+            alg_wrapper = lb_cfg.get("learning_based_algorithm", {})
+            alg_cfg = next(iter(alg_wrapper.values())) if alg_wrapper else None
+
+            return Jet(jet_method_str, gen_cfg, alg_cfg)
+
+        raise ValueError(f'"{jet_method_str}" is not a recognised jet method (expected "None", "OpenLoop", "Classical", or "LearningBased").')
 
 class Config():
     def __init__(self, length: Length, grid: Grid, mpi: Mpi, temporal: Temporal, physics: Physics, jet: Jet):
