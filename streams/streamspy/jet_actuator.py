@@ -219,13 +219,13 @@ def init_actuator(rank: int, config: Config) -> AbstractActuator:
     
     elif jet_config.jet_method_name == "OpenLoop":
     
-        if jet_config.jet_strategy_name  in ("constant", "DMDc"):
+        if jet_config.jet_strategy_name  in ("constant", "dmdc"):
             slot_start = jet_config.jet_params["slot_start"]
             slot_end = jet_config.jet_params["slot_end"]
             amplitude = jet_config.jet_params["amplitude"]
             if jet_config.jet_strategy_name  == "constant":
                 return ConstantActuator(amplitude, slot_start, slot_end, rank, config);
-            elif jet_config.jet_strategy_name  == "DMDc":
+            elif jet_config.jet_strategy_name  == "dmdc":
                 return DMDcActuator(amplitude, slot_start, slot_end, rank, config);
         
         elif jet_config.jet_strategy_name  == "sinusoidal":

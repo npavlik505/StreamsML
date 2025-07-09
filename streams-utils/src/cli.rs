@@ -461,6 +461,7 @@ impl JetActuator {
 // JET ACTUATOR: OpenLoop Actuator Parameters
 
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
+#[clap(rename_all = "lower")]
 pub(crate) enum OpenLoopActuator {
     /// jet actuator with constant amplitude
     Constant(ConstantArgs),
@@ -507,6 +508,7 @@ pub(crate) struct DMDcArgs {
 // JET ACTUATOR: Classical Actuator Parameters
 
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
+#[clap(rename_all = "lower")]
 pub(crate) enum ClassicalActuator {
     // (nothing yet – placeholder so the syntax is valid)
     #[clap(name = "placeholder")]
@@ -522,6 +524,7 @@ pub(crate) struct PlaceholderArgs {
 // JET ACTUATOR: LearningBased Actuator Parameters
 
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
+#[clap(rename_all = "lower")]
 pub(crate) enum LearningBasedActuator {
     /// Deep-determinstic policy gradient
     Ddpg(DdpgArgs),
