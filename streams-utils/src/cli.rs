@@ -32,6 +32,8 @@ pub(crate) enum Command {
     Animate(Animate),
 }
 
+// ----------------------------------ANIMATE----------------------------------
+
 #[derive(Parser, Debug, Clone)]
 pub(crate) struct Animate {
     /// path to the output folder for which the data should be animated
@@ -42,6 +44,8 @@ pub(crate) struct Animate {
     /// from 1:100, and decimate = 5 then it will iterate by 1:5:100
     pub(crate) decimate: usize,
 }
+
+// ----------------------------------CONFIG GENERATOR----------------------------------
 
 #[derive(Parser, Debug, Clone)]
 /// Fields that are configurable for generating input.dat files for the solver
@@ -120,7 +124,7 @@ pub(crate) struct ConfigGenerator {
     #[command(subcommand)]
     /// whether or not to use blowing boundary condition on the bottom surface
     /// in the sbli case
-    pub(crate) blowing_bc: JetActuator,
+    pub(crate) blowing_bc: JetActuatorCli,
 
     #[clap(long)]
     /// enable exporting 3D flowfields to VTK files
@@ -201,7 +205,7 @@ impl ConfigGenerator {
             steps: 50_000,
             probe_io_steps: 0,
             span_average_io_steps: 100,
-            blowing_bc: JetActuator::None,
+            blowing_bc: JetActuatorCli::None,
             snapshots_3d: true,
             json: false,
             use_python: false,
@@ -247,6 +251,8 @@ impl ConfigGenerator {
             ..
         } = self;
 
+        let blowing_bc = blowing_bc.into();
+
         crate::config_generator::Config {
             reynolds_number,
             mach_number,
@@ -277,6 +283,8 @@ impl ConfigGenerator {
     }
 }
 
+// ----------------------------------FLOW TYPE----------------------------------
+
 #[derive(ValueEnum, Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum FlowType {
     ChannelFlow,
@@ -294,21 +302,93 @@ impl FlowType {
     }
 }
 
-#[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum JetActuator {
-    /// no blowing boundary‑condition
+// ----------------------------------JET ACTUATOR----------------------------------
+
+//#[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
+//pub(crate) enum JetActuator {
+//    /// no blowing boundary‑condition
+//    None,
+//    /// open‑loop strategies: constant, sinusoidal, DMDc
+//    #[clap(subcommand)]
+//    OpenLoop(OpenLoopActuator),
+//    /// classical (PID, LQR …) — placeholder for future expansion
+//    #[clap(subcommand)]
+//    Classical(ClassicalActuator),
+//    /// learning‑based (RL) strategies
+//    #[clap(subcommand)]
+//    LearningBased(LearningBasedActuator),
+//}
+
+#[derive(ValueEnum, Debug, Clone, Serialize, Deserialize)]
+pub enum JetMethod { 
+    None, 
+    OpenLoop, 
+    Classical, 
+    LearningBased, 
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JetActuator {
+    pub method: JetMethod,              // none | open_loop | classical | learning_based
+    pub strategy: String,               // constant | sinusoidal | ddpg | …
+    #[serde(flatten)]
+    pub params: serde_json::Value,      // raw params; or a tagged enum if you prefer
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum JetActuatorCli {
     None,
-    /// open‑loop strategies: constant, sinusoidal, DMDc
     #[clap(subcommand)]
     OpenLoop(OpenLoopActuator),
-    /// classical (PID, LQR …) — placeholder for future expansion
     #[clap(subcommand)]
     Classical(ClassicalActuator),
-    /// learning‑based (RL) strategies
+    #[clap(subcommand)]
     LearningBased(LearningBasedActuator),
 }
 
-impl JetActuator {
+impl From<JetActuatorCli> for JetActuator {
+    fn from(cli: JetActuatorCli) -> Self {
+        use JetMethod::*;
+
+        match cli {
+            JetActuatorCli::None =>
+                Self { method: None,
+                       strategy: "none".into(),
+                       params: serde_json::Value::Null },
+
+            // ---------- open-loop ----------
+            JetActuatorCli::OpenLoop(OpenLoopActuator::Constant(a)) =>
+                Self { method: OpenLoop,
+                       strategy: "constant".into(),
+                       params: serde_json::to_value(a).unwrap() },
+
+            JetActuatorCli::OpenLoop(OpenLoopActuator::Sinusoidal(a)) =>
+                Self { method: OpenLoop,
+                       strategy: "sinusoidal".into(),
+                       params: serde_json::to_value(a).unwrap() },
+
+            JetActuatorCli::OpenLoop(OpenLoopActuator::DMDc(a)) =>
+                Self { method: OpenLoop,
+                       strategy: "dmdc".into(),
+                       params: serde_json::to_value(a).unwrap() },
+
+            // ---------- learning-based ----------
+            JetActuatorCli::LearningBased(LearningBasedActuator::Ddpg(a)) =>
+                Self { method: LearningBased,
+                       strategy: "ddpg".into(),
+                       params: serde_json::to_value(a).unwrap() },
+
+            // ---------- classical placeholder ----------
+            JetActuatorCli::Classical(ClassicalActuator::Placeholder(a)) =>
+                Self { method: Classical,
+                       strategy: "placeholder".into(),
+                       params: serde_json::to_value(a).unwrap() },
+        }
+    }
+}
+
+/*
+impl JetActuatorCli {
     /// Streams’ `blowing_bc` uses 0 for no blowing and 1 for any jet actuation
     pub(crate) fn blowing_bc_as_streams_int(&self) -> u8 {
         match self {
@@ -316,7 +396,6 @@ impl JetActuator {
             _ => 1,
         }
     }
-
     /// slot‑start index as expected by the solver (‑1 => unused)
     pub(crate) fn slot_start_as_streams_int(&self) -> i32 {
         match self {
@@ -332,7 +411,6 @@ impl JetActuator {
             JetActuator::Classical(_) => -1,
         }
     }
-
     /// slot‑end index as expected by the solver (‑1 => unused)
     pub(crate) fn slot_end_as_streams_int(&self) -> i32 {
         match self {
@@ -349,44 +427,116 @@ impl JetActuator {
         }
     }
 }
+*/
+
+impl JetActuator {
+    pub fn blowing_bc_as_streams_int(&self) -> u8 {
+        match self.method {
+            JetMethod::None => 0,
+            _                => 1,
+        }
+    }
+
+    pub fn slot_start_as_streams_int(&self) -> i32 {
+        use JetMethod::*;
+        match self.method {
+            None | Classical => -1,
+            OpenLoop | LearningBased => self.params.get("slot_start")
+                                                   .and_then(|v| v.as_i64())
+                                                   .unwrap_or(-1) as i32,
+        }
+    }
+
+    pub fn slot_end_as_streams_int(&self) -> i32 {
+        use JetMethod::*;
+        match self.method {
+            None | Classical => -1,
+            OpenLoop | LearningBased => self.params.get("slot_end")
+                                                   .and_then(|v| v.as_i64())
+                                                   .unwrap_or(-1) as i32,
+        }
+    }
+}
+
+// JET ACTUATOR: OpenLoop Actuator Parameters
 
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum OpenLoopActuator {
     /// jet actuator with constant amplitude
-    Constant {
-        #[clap(long)] amplitude: f64,
-        #[clap(long)] slot_start: usize,
-        #[clap(long)] slot_end: usize,
-    },
-    Sinusoidal {
-        #[clap(long)] amplitude: f64,
-        #[clap(long)] angular_frequency: f64,
-        #[clap(long)] slot_start: usize,
-        #[clap(long)] slot_end: usize,
-    },
-    #[clap(name = "DMDc")]
-    DMDc {
-        #[clap(long)] amplitude: f64,
-        #[clap(long)] slot_start: usize,
-        #[clap(long)] slot_end: usize,
-    },
+    Constant(ConstantArgs),
+    Sinusoidal(SinusoidalArgs), 
+    DMDc(DMDcArgs),
 }
-
-#[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum ClassicalActuator {
-    // (nothing yet – placeholder so the syntax is valid)
-    #[clap(name = "placeholder")]
-    Placeholder,
-}
-
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
-/// Fields that are configurable but standard for most learning based control strategies 
-pub(crate) struct LearningBasedActuator {
+pub(crate) struct ConstantArgs {
     #[clap(long)]
     pub(crate) slot_start: usize,
 
     #[clap(long)]
     pub(crate) slot_end: usize,
+    
+    #[clap(long)] 
+    pub(crate) amplitude: f64,
+}
+#[derive(Parser, Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct SinusoidalArgs {
+    #[clap(long)]
+    pub(crate) slot_start: usize,
+
+    #[clap(long)]
+    pub(crate) slot_end: usize,
+    
+    #[clap(long)] 
+    pub(crate) amplitude: f64,
+    
+    #[clap(long)] 
+    pub(crate) angular_frequency: f64,
+}
+#[derive(Parser, Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct DMDcArgs {
+    #[clap(long)]
+    pub(crate) slot_start: usize,
+
+    #[clap(long)]
+    pub(crate) slot_end: usize,
+    
+    #[clap(long)] 
+    pub(crate) amplitude: f64,
+}
+
+// JET ACTUATOR: Classical Actuator Parameters
+
+#[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
+pub(crate) enum ClassicalActuator {
+    // (nothing yet – placeholder so the syntax is valid)
+    #[clap(name = "placeholder")]
+    Placeholder(PlaceholderArgs),
+}
+#[derive(Parser, Debug, Clone, Serialize, Deserialize)]
+/// Fields that are configurable but standard for most learning based control strategies 
+pub(crate) struct PlaceholderArgs {
+    #[clap(name = "placeholderargs")]
+    pub(crate) PlaceholderArg: String,
+}
+
+// JET ACTUATOR: LearningBased Actuator Parameters
+
+#[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
+pub(crate) enum LearningBasedActuator {
+    /// Deep-determinstic policy gradient
+    Ddpg(DdpgArgs),
+}
+#[derive(Parser, Debug, Clone, Serialize, Deserialize)]
+/// Fields that are configurable but standard for most learning based control strategies 
+pub(crate) struct DdpgArgs {
+    #[clap(long)]
+    pub(crate) slot_start: usize,
+
+    #[clap(long)]
+    pub(crate) slot_end: usize,
+    
+    #[clap(long, default_value_t = 1.0)] 
+    pub(crate) amplitude: f64,
 
     #[clap(long, default_value_t = 10)]
     pub(crate) train_episodes: usize,
@@ -408,26 +558,25 @@ pub(crate) struct LearningBasedActuator {
     
     #[clap(long, default_value = "/RL_metrics/checkpoint")]
     pub(crate) checkpoint_dir: String,
-
-    #[command(subcommand)]
-    /// whether or not to use blowing boundary condition on the bottom surface
-    /// in the sbli case
-    pub(crate) learning_based_algorithm: Algorithm,
+    
+    #[clap(long, default_value_t = 42)]   
+    pub(crate) seed: u64,
+    
+    #[clap(long, default_value_t = 3e-4)] 
+    pub(crate) learning_rate: f64,
+    
+    #[clap(long, default_value_t = 0.99)] 
+    pub(crate) gamma: f64,
+    
+    #[clap(long, default_value_t = 0.005)] 
+    pub(crate) tau: f64,
+    
+    #[clap(long, default_value_t = 1_000_000)] 
+    pub(crate) buffer_size: usize,
 }
 
-#[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
-/// Fields that are configurable and specific for most learning based control strategies 
-pub(crate) enum Algorithm {
-    /// reinforcement-learning adaptive control
-    DDPG {
-        #[clap(long, default_value_t = 42)]   seed: u64,
-        #[clap(long, default_value_t = 1.0)] amplitude: f64,
-        #[clap(long, default_value_t = 3e-4)] learning_rate: f64,
-        #[clap(long, default_value_t = 0.99)] gamma: f64,
-        #[clap(long, default_value_t = 0.005)] tau: f64,
-        #[clap(long, default_value_t = 1_000_000)] buffer_size: usize,
-    },
-}
+
+
 
 #[derive(Debug, Clone, Parser)]
 pub(crate) struct BlowingSlot {}

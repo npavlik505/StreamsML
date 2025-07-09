@@ -12,14 +12,7 @@ from StreamsEnvironment import StreamsGymEnv
 
 env = StreamsGymEnv()
 
-# If the configuration requests the adaptive jet, delegate to ``rl_control.py``
-# print('we are here')
-# with open("/input/input.json", "r") as f:
-#    cfg_json = json.load(f)
-#    cfg = Config.from_json(cfg_json)
-#    print(cfg.jet.jet_method)
-# if cfg.jet.jet_method != "LearningBased":
-if env.config.jet.jet_method != "LearningBased":
+if env.config.jet.jet_method_name == "OpenLoop":
 
     # Instantiate environment and prep h5 files for standard datasets
     # env = StreamsGymEnv()
@@ -37,8 +30,13 @@ if env.config.jet.jet_method != "LearningBased":
     env.close_h5_io()
     env.close()
     exit()
+    
+elif env.config.jet.jet_method_name == "Classical":
+    print("Classical control methods have yet to be implemented")
+    env.close()
+    exit()
 
-else:
+elif env.config.jet.jet_method_name == "LearningBased":
     # General imports
     import argparse # Used for attribute access, defining default values and data-type, and providing ready made help calls
     import json
@@ -55,7 +53,7 @@ else:
 
     # Script imports
     from DDPG import ddpg, ReplayBuffer
-    from config import Config, JetMethod
+    from config import Config, Jet
     import io_utils
 
     LOGGER = logging.getLogger(__name__)
@@ -89,7 +87,7 @@ else:
         torch.save(agent.critic.state_dict(), directory / f"critic_{tag}.pt")
 
 
-    def train(env: StreamsGymEnv, agent: ddpg, args: argparse.Namespace) -> Path:
+    def train(env: StreamsGymEnv, agent: ddpg) -> Path:
         """Train agent and return path to best checkpoint."""
         comm = MPI.COMM_WORLD
         rank = comm.rank
@@ -101,30 +99,30 @@ else:
         action_dim = env.action_space.shape[0]
         
         # print("[rl_control.py] Define object for replay buffer")
-        buffer = ReplayBuffer(state_dim, action_dim, args.buffer_size)
+        buffer = ReplayBuffer(state_dim, action_dim, env.config.jet.jet_params["buffer_size"])
         
         # print("[rl_control.py] Define reward objects")
         best_reward = -float("inf")
-        best_path = Path(args.checkpoint_dir) / "best"
+        best_path = Path(env.config.jet.jet_params["checkpoint_dir"]) / "best"
         episode_rewards = []
         
         # open output file for training statistics on all ranks
-        metrics_path = Path(args.checkpoint_dir) / "training.h5"
+        metrics_path = Path(env.config.jet.jet_params["checkpoint_dir"]) / "training.h5"
         metrics_path.parent.mkdir(parents=True, exist_ok=True)
         h5 = io_utils.IoFile(str(metrics_path))
-        loss_writes = args.train_episodes * env.max_episode_steps
+        loss_writes = env.config.jet.jet_params["train_episodes"] * env.max_episode_steps
         actor_dset = io_utils.Scalar0D(h5, [1], loss_writes, "actor_loss", rank)
         critic_dset = io_utils.Scalar0D(h5, [1], loss_writes, "critic_loss", rank)
-        ep_dset = io_utils.Scalar0D(h5, [1], args.train_episodes, "episode_reward", rank)
+        ep_dset = io_utils.Scalar0D(h5, [1], env.config.jet.jet_params["train_episodes"], "episode_reward", rank)
         
         # open output file for time, amp, reward, and obs in the training loop to be collected
-        write_training = args.training_output is not None
+        write_training = env.config.jet.jet_params["training_output"] is not None
         if write_training:
             # Define path, create directory and h5, gather data to allocate shape
-            training_output_path = Path(args.training_output)
+            training_output_path = Path(env.config.jet.jet_params["training_output"])
             training_output_path.parent.mkdir(parents=True, exist_ok=True)
             h5train = io_utils.IoFile(str(training_output_path))
-            training_episodes = args.train_episodes
+            training_episodes = env.config.jet.jet_params["train_episodes"]
             training_steps = env.max_episode_steps
             observation_dim = env.observation_space.shape[0]
             
@@ -140,7 +138,7 @@ else:
             reward_dset = h5train.file.create_dataset("reward", shape = (training_episodes, training_steps), dtype = "f4")
             obs_dset = h5train.file.create_dataset("observation", shape = (training_episodes, training_steps, observation_dim), dtype = "f4")
                 
-        for ep in range(args.train_episodes): #, disable=rank != 0):
+        for ep in range(env.config.jet.jet_params["train_episodes"]): #, disable=rank != 0):
             if rank == 0:
                 print(f'[rl_control.py] Beginning of training episode {ep}')
             if STOP:
@@ -185,11 +183,11 @@ else:
                 LOGGER.info("Training Episode %d reward %.6f", ep + 1, ep_reward)
                 if ep_reward > best_reward:
                     best_reward = ep_reward
-                    save_checkpoint(agent, Path(args.checkpoint_dir), "best")
-                if (ep + 1) % args.checkpoint_interval == 0:
-                    save_checkpoint(agent, Path(args.checkpoint_dir), f"ep{ep + 1}")
+                    save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), "best")
+                if (ep + 1) % env.config.jet.jet_params["checkpoint_interval"] == 0:
+                    save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), f"ep{ep + 1}")
         if rank == 0 and not STOP:
-            save_checkpoint(agent, Path(args.checkpoint_dir), "final")
+            save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), "final")
         print("Just before h5train.close()")
         if write_training:
             comm.Barrier()
@@ -200,7 +198,7 @@ else:
         h5.close()
         return best_path
 
-    def evaluate(env: StreamsGymEnv, agent: ddpg, args: argparse.Namespace, checkpoint: Path) -> None:
+    def evaluate(env: StreamsGymEnv, agent: ddpg, checkpoint: Path) -> None:
         """Run evaluation episodes using checkpoint."""
         comm = MPI.COMM_WORLD
         rank = comm.rank
@@ -210,13 +208,13 @@ else:
         agent.critic.load_state_dict(torch.load(checkpoint.with_name("critic_best.pt")))
 
         # open output file for time, amp, reward, and obs in the evaluation loop to be collected
-        write_eval = args.eval_output is not None
+        write_eval = env.config.jet.jet_params["eval_output"] is not None
         if write_eval:
             # Define path, create directory and h5, gather data to allocate shape
-            eval_output_path = Path(args.eval_output)
+            eval_output_path = Path(env.config.jet.jet_params["eval_output"])
             eval_output_path.parent.mkdir(parents=True, exist_ok=True)
             h5eval = io_utils.IoFile(str(eval_output_path))
-            eval_episodes = args.eval_episodes
+            eval_episodes = env.config.jet.jet_params["eval_episodes"]
             eval_steps = env.max_episode_steps
             observation_dim = env.observation_space.shape[0]
             
@@ -231,14 +229,14 @@ else:
             amp_dset = h5eval.file.create_dataset("amplitude", shape = (eval_episodes, eval_steps), dtype = "f4")
             reward_dset = h5eval.file.create_dataset("reward", shape = (eval_episodes, eval_steps), dtype = "f4")
             obs_dset = h5eval.file.create_dataset("observation", shape = (eval_episodes, eval_steps, observation_dim), dtype = "f4")
-        for ep in range(args.eval_episodes): #, disable=rank != 0):
+        for ep in range(env.config.jet.jet_params["eval_episodes"]): #, disable=rank != 0):
             if rank == 0:
                 print(f'[rl_control.py] Beginning of evaluation episode {ep}')
             obs = env.reset()
             done = False
             step = 0
             ep_reward = 0.0
-            while not done and step < args.eval_max_steps:
+            while not done and step < env.config.jet.jet_params["eval_max_steps"]:
                 if rank == 0:
                     print(f'[rl_control.py] Evaluate step = {step}')
                     action = agent.choose_action(torch.tensor(obs, dtype=torch.float32))
@@ -261,62 +259,14 @@ else:
             comm.Barrier()
             h5eval.close()
 
-    # Function providing all RL parameters with default values using argparse.
-    def parse_args() -> argparse.Namespace:
-        """Parse command line arguments."""
-        parser = argparse.ArgumentParser(description="DDPG control for STREAmS")
-        parser.add_argument("--config", type=str, default="/output/input.json", help="Path to input.json")
-        parser.add_argument("--train-episodes", type=int, default=10)
-        parser.add_argument("--eval-episodes", type=int, default=5)
-        parser.add_argument("--eval-max-steps", type=int, default=1000)
-        parser.add_argument("--checkpoint-dir", type=str, default="./RL_metrics/checkpoint")
-        parser.add_argument("--checkpoint-interval", type=int, default=5)
-        parser.add_argument("--seed", type=int, default=42)
-        parser.add_argument("--learning-rate", type=float, default=3e-4)
-        parser.add_argument("--gamma", type=float, default=0.99)
-        parser.add_argument("--tau", type=float, default=0.005)
-        parser.add_argument("--buffer-size", type=int, default=int(1e6))
-        parser.add_argument("--training-output", type=str, default=None, help="Optional HDF5 file for training loop info")
-        parser.add_argument("--eval-output", type=str, default=None, help="Optional HDF5 file for evaluation loop info")
-        parser.add_argument("--verbose", type=bool, default=False, help = "Print network details") # action = "store_true", help = "Print network details")
-        return parser.parse_args()
+
 
     if __name__ == "__main__":
         setup_logging()
-        args = parse_args() # instance of parser assigned to object args 
-        config = Config.from_json(args.config)
-        extras = {**(config.jet.jet_gen_json or {}), **(config.jet.jet_alg_json or {}), } # assign the blowing-bc options from input.json to extras as a dictionary
-        
-        # Create an Python dictionary. While key and value are identical here, only the _overrides key must match the extras key collected from input.json entry
-        _overrides = {
-            "train_episodes":      "train_episodes",
-            "eval_episodes":       "eval_episodes",
-            "eval_max_steps":      "eval_max_steps",
-            "checkpoint_dir":      "checkpoint_dir",
-            "checkpoint_interval": "checkpoint_interval",
-            "seed":                "seed",
-            "learning_rate":       "learning_rate",
-            "gamma":               "gamma",
-            "tau":                 "tau",
-            "buffer_size":         "buffer_size",
-            "eval_output":         "eval_output",
-            "training_output":     "training_output",
-            "verbose":             "verbose",
-    }
-
-    # Loop through overrides and if _overrides and extras keys match, replace the _overrides value with extras value.
-    for json_key, arg_name in _overrides.items():
-        if json_key in extras:
-            setattr(args, arg_name, extras[json_key])
-
-    # Double check that the blowing-bc = adaptive, and exit false
-    if config.jet.jet_method != LearningBased:
-        LOGGER.error("JetMethod is not LearningBased. Exiting RL controller.")
-        exit(1)
 
     # Generate random number via torch. Not used now but present for future restart use.
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
+    torch.manual_seed(env.config.jet.jet_params["seed"])
+    np.random.seed(env.config.jet.jet_params["seed"])
 
     # Use GPU if available. Currently only used for open-loop control
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -331,16 +281,19 @@ else:
         print(f'action_dim: {action_dim}')
         print(f'max_action: {max_action}')
 
-    agent = ddpg(state_dim, action_dim, max_action, verbose=args.verbose) # instantiate the ddpg algorithm
-    agent.lr = args.learning_rate # RL parameters stored in args using argparse/json method above
-    agent.GAMMA = args.gamma
-    agent.TAU = args.tau
+    agent = ddpg(state_dim, action_dim, max_action) # instantiate the ddpg algorithm
+    agent.lr = env.config.jet.jet_params["learning_rate"] # RL parameters stored in args using argparse/json method above
+    agent.GAMMA = env.config.jet.jet_params["gamma"]
+    agent.TAU = env.config.jet.jet_params["tau"]
     agent.actor_optimizer = torch.optim.Adam(agent.actor.parameters(), lr=agent.lr) #Initialize actor parameters
     agent.critic_optimizer = torch.optim.Adam(agent.critic.parameters(), lr=agent.lr) #Initialize critc parameters
 
-    best_ckpt = train(env, agent, args) # Train the algorithm. Method above.
+    best_ckpt = train(env, agent) # Train the algorithm. Method above.
 
-    evaluate(env, agent, args, best_ckpt) # Evaluate the algorithm. Method Above.
+    evaluate(env, agent, best_ckpt) # Evaluate the algorithm. Method Above.
 
     env.close()
 
+else:
+    print(f'blowing_bc is set to {env.config.jet.jet_method_name}.')
+    print("blowing_bc must be set to None, OpenLoop, Classical, or LearningBased")

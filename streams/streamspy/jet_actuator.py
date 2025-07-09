@@ -213,46 +213,41 @@ class AdaptiveActuator(AbstractActuator):
 
 def init_actuator(rank: int, config: Config) -> AbstractActuator:
     jet_config = config.jet
-
-    if jet_config.jet_method == none:
+    
+    if jet_config.jet_method_name == "None":
         return NoActuation()
-    elif jet_config.jet_method == constant:
-        # print(jet_config.extra_json)
-        # these should be guaranteed to exist in the additional json information
-        # so we can essentially ignore the errors that we have here
-        slot_start = jet_config.extra_json["slot_start"]
-        slot_end = jet_config.extra_json["slot_end"]
-        amplitude = jet_config.extra_json["amplitude"]
-
-        return ConstantActuator(amplitude, slot_start, slot_end, rank, config);
-    elif jet_config.jet_method == sinusoidal:
-        # print(jet_config.extra_json)
-        # these should be guaranteed to exist in the additional json information
-        # so we can essentially ignore the errors that we have here
-        slot_start = jet_config.extra_json["slot_start"]
-        slot_end = jet_config.extra_json["slot_end"]
-        amplitude = jet_config.extra_json["amplitude"]
-        angular_frequency = jet_config.extra_json["angular_frequency"]
-
-        return SinusoidalActuator(amplitude, slot_start, slot_end, rank, config, angular_frequency);
-    elif jet_config.jet_method == DMDc:
-        # print(jet_config.extra_json)
-        # these should be guaranteed to exist in the additional json information
-        # so we can essentially ignore the errors that we have here
-        slot_start = jet_config.extra_json["slot_start"]
-        slot_end = jet_config.extra_json["slot_end"]
-        amplitude = jet_config.extra_json["amplitude"]
-
-        return DMDcActuator(amplitude, slot_start, slot_end, rank, config);
-    elif jet_config.jet_method == adaptive:
-        # print(jet_config.extra_json)
-        # these should be guaranteed to exist in the additional json information
-        # so we can essentially ignore the errors that we have here
-        slot_start = jet_config.extra_json["slot_start"]
-        slot_end = jet_config.extra_json["slot_end"]
-        amplitude = jet_config.extra_json["amplitude"]
-
-        return AdaptiveActuator(amplitude, slot_start, slot_end, rank, config);
+    
+    elif jet_config.jet_method_name == "OpenLoop":
+    
+        if jet_config.jet_strategy_name  in ("constant", "DMDc"):
+            slot_start = jet_config.jet_params["slot_start"]
+            slot_end = jet_config.jet_params["slot_end"]
+            amplitude = jet_config.jet_params["amplitude"]
+            if jet_config.jet_strategy_name  == "constant":
+                return ConstantActuator(amplitude, slot_start, slot_end, rank, config);
+            elif jet_config.jet_strategy_name  == "DMDc":
+                return DMDcActuator(amplitude, slot_start, slot_end, rank, config);
         
+        elif jet_config.jet_strategy_name  == "sinusoidal":
+            slot_start = jet_config.jet_params["slot_start"]
+            slot_end = jet_config.jet_params["slot_end"]
+            amplitude = jet_config.jet_params["amplitude"]
+            angular_frequency = jet_config.jet_params["angular_frequency"]
+            return SinusoidalActuator(amplitude, slot_start, slot_end, rank, config, angular_frequency);
+
+        else:
+            pass
+    
+    elif jet_config.jet_method_name == "Classical":
+        print('No classical control algorithms yet')
+        exit()
+    
+    elif jet_config.jet_method_name == "LearningBased":
+        if jet_config.jet_strategy_name in ("ddpg"):
+            slot_start = jet_config.jet_params["slot_start"]
+            slot_end = jet_config.jet_params["slot_end"]
+            amplitude = jet_config.jet_params["amplitude"]
+            return AdaptiveActuator(amplitude, slot_start, slot_end, rank, config);
     else:
+        print('Learning based algorithm does not match available options: DDPG')
         exit()

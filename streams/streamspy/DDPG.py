@@ -82,8 +82,7 @@ class ReplayBuffer(object):
 #The hyperparameters are defined, the actor & critc NN are defined as attributes and their Target NN are created
 #Lastly, the optimizer, Adam, is selected to adjust the NN weights and the MSELoss is selected for use in the backprop calc
 class ddpg(object):
-    def __init__(self, state_dim, action_dim, max_action, verbose: bool):
-        self.verbose = verbose
+    def __init__(self, state_dim, action_dim, max_action):
         self.hidden_width = 8  # The number of neurons in hidden layers of the neural network
         self.batch_size = 50 #100  # batch size
         self.GAMMA = 0.99  # discount factor
@@ -96,13 +95,6 @@ class ddpg(object):
         self.critic = Critic(state_dim, action_dim, self.hidden_width)
         self.critic_target = copy.deepcopy(self.critic)
 
-        if self.verbose:
-            print("Actor network:\n, self.actor")
-            actor_params = sum(p.numel() for p in self.actor.parameters())
-            print(f"Total actor parameters: {actor_params}")
-            print("Critic network:\n", self.critic)
-            critic_params = sum(p.numel() for p in self.critic.parameters())
-            print(f"Total critic parameters: {critic_params}")
         self.run_timestamp = time.strftime("%Y%m%d.%H%M%S")
         self.run_name = self.run_timestamp
 

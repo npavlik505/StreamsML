@@ -102,7 +102,7 @@ class StreamsGymEnv(gymnasium.Env):
         # Initialize actuator
         self.actuator = jet_actuator.init_actuator(self.rank, self.config)
 
-        if self.config.jet.jet_method == "LearningBased":
+        if self.config.jet.jet_method_name == "LearningBased":
             # Observation Space (Determine what resonable bounds are)
             # Observation = τw(x) ∈ R^{nx}.  We bound it loosely between [-100, +100] per point.
             high_obs = np.full((self.nx,), 100.0, dtype=np.float32)
@@ -117,7 +117,7 @@ class StreamsGymEnv(gymnasium.Env):
             self.action_space = spaces.Box(low=np.array([-self.max_amplitude], dtype=np.float32),
                                            high=np.array([+self.max_amplitude], dtype=np.float32),
                                            shape=(1,),
-                                           dtype=np.float3)
+                                           dtype=np.float32)
 
         # Step counting and time
         self.step_count = 0
