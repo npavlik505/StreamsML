@@ -76,10 +76,13 @@ config:
 		    --checkpoint-dir {{checkpoint}} \
 		    --seed 42 \
 		    --amplitude 1.0 \
+		    --hidden-width 8 \
+		    --batch-size 50 \
 		    --learning-rate 0.0003 \
 		    --gamma 0.99 \
 		    --tau 0.005 \
 		    --buffer-size 100000
+
 
 	cat {{config_output}}
 

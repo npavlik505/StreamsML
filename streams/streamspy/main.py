@@ -2,12 +2,11 @@
 # Run STREAmS using the gymnasium environment wrapper
 
 import json # collects values from input.json fields, converts them to a nested Python dictionary, which is then converted into a Config object (e.g. config.temporal.num_iter)
+import h5py
 import os
 import runpy
 from pathlib import Path
-
 import numpy as np
-print("Made it back to main.py")
 from StreamsEnvironment import StreamsGymEnv
 
 env = StreamsGymEnv()
@@ -52,8 +51,11 @@ elif env.config.jet.jet_method_name == "LearningBased":
     from mpi4py import MPI
 
     # Script imports
-    from DDPG import ddpg, ReplayBuffer
-    from config import Config, Jet
+    # from env.config.jet.parameters["strategy"] import agent
+    import importlib
+    # from DDPG import ddpg, ReplayBuffer
+    # from config import Config, Jet
+    from base_agent import BaseAgent
     import io_utils
 
     LOGGER = logging.getLogger(__name__)
@@ -80,14 +82,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
         LOGGER.addHandler(fh)
         LOGGER.addHandler(ch)
 
-    def save_checkpoint(agent: ddpg, directory: Path, tag: str) -> None:
-        """Save actor and critic weights."""
-        directory.mkdir(parents=True, exist_ok=True)
-        torch.save(agent.actor.state_dict(), directory / f"actor_{tag}.pt")
-        torch.save(agent.critic.state_dict(), directory / f"critic_{tag}.pt")
-
-
-    def train(env: StreamsGymEnv, agent: ddpg) -> Path:
+    def train(env: StreamsGymEnv, agent) -> Path:
         """Train agent and return path to best checkpoint."""
         comm = MPI.COMM_WORLD
         rank = comm.rank
@@ -97,9 +92,6 @@ elif env.config.jet.jet_method_name == "LearningBased":
         # print("[rl_control.py] Define objects for observation and action space")
         state_dim = env.observation_space.shape[0]
         action_dim = env.action_space.shape[0]
-        
-        # print("[rl_control.py] Define object for replay buffer")
-        buffer = ReplayBuffer(state_dim, action_dim, env.config.jet.jet_params["buffer_size"])
         
         # print("[rl_control.py] Define reward objects")
         best_reward = -float("inf")
@@ -111,8 +103,6 @@ elif env.config.jet.jet_method_name == "LearningBased":
         metrics_path.parent.mkdir(parents=True, exist_ok=True)
         h5 = io_utils.IoFile(str(metrics_path))
         loss_writes = env.config.jet.jet_params["train_episodes"] * env.max_episode_steps
-        actor_dset = io_utils.Scalar0D(h5, [1], loss_writes, "actor_loss", rank)
-        critic_dset = io_utils.Scalar0D(h5, [1], loss_writes, "critic_loss", rank)
         ep_dset = io_utils.Scalar0D(h5, [1], env.config.jet.jet_params["train_episodes"], "episode_reward", rank)
         
         # open output file for time, amp, reward, and obs in the training loop to be collected
@@ -163,19 +153,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
                         amp_dset[ep, step] = action
                         reward_dset[ep, step] = reward
                         obs_dset[ep, step, :] = obs
-
-                    buffer.store(
-                        torch.tensor(obs, dtype=torch.float32),
-                        torch.tensor(action, dtype=torch.float32),
-                        torch.tensor([reward], dtype=torch.float32),
-                        torch.tensor(next_obs, dtype=torch.float32),
-                    )
-                    if buffer.size >= agent.batch_size:
-                        actor_loss, critic_loss = ddpg_update(agent, buffer)
-                        LOGGER.debug("actor_loss=%f critic_loss=%f", actor_loss, critic_loss)
-                        if actor_dset is not None:
-                            actor_dset.write_array(np.array([actor_loss], dtype=np.float32))
-                            critic_dset.write_array(np.array([critic_loss], dtype=np.float32))
+                        agent.learn(obs, action, reward, next_obs)
                 step += 1
                 obs = next_obs
             if rank == 0:
@@ -183,29 +161,28 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 LOGGER.info("Training Episode %d reward %.6f", ep + 1, ep_reward)
                 if ep_reward > best_reward:
                     best_reward = ep_reward
-                    save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), "best")
+                    agent.save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), "best")
                 if (ep + 1) % env.config.jet.jet_params["checkpoint_interval"] == 0:
-                    save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), f"ep{ep + 1}")
+                    agent.save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), f"ep{ep + 1}")
         if rank == 0 and not STOP:
-            save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), "final")
+            agent.save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), "final")
         print("Just before h5train.close()")
         if write_training:
             comm.Barrier()
             h5train.close()
-        actor_dset.close()
-        critic_dset.close()
         ep_dset.close()
         h5.close()
+        
         return best_path
 
-    def evaluate(env: StreamsGymEnv, agent: ddpg, checkpoint: Path) -> None:
+    def evaluate(env: StreamsGymEnv, agent, checkpoint: Path) -> None:
         """Run evaluation episodes using checkpoint."""
         comm = MPI.COMM_WORLD
         rank = comm.rank
         if rank == 0:
             print(f'[rl_control.py] EVALUATION')
-        agent.actor.load_state_dict(torch.load(checkpoint.with_name("actor_best.pt")))
-        agent.critic.load_state_dict(torch.load(checkpoint.with_name("critic_best.pt")))
+        
+        agent.load_checkpoint(checkpoint)
 
         # open output file for time, amp, reward, and obs in the evaluation loop to be collected
         write_eval = env.config.jet.jet_params["eval_output"] is not None
@@ -281,12 +258,31 @@ elif env.config.jet.jet_method_name == "LearningBased":
         print(f'action_dim: {action_dim}')
         print(f'max_action: {max_action}')
 
-    agent = ddpg(state_dim, action_dim, max_action) # instantiate the ddpg algorithm
-    agent.lr = env.config.jet.jet_params["learning_rate"] # RL parameters stored in args using argparse/json method above
-    agent.GAMMA = env.config.jet.jet_params["gamma"]
-    agent.TAU = env.config.jet.jet_params["tau"]
-    agent.actor_optimizer = torch.optim.Adam(agent.actor.parameters(), lr=agent.lr) #Initialize actor parameters
-    agent.critic_optimizer = torch.optim.Adam(agent.critic.parameters(), lr=agent.lr) #Initialize critc parameters
+    # agent = ddpg(state_dim, action_dim, max_action,
+    #    hidden_width = env.config.jet.jet_params["hidden_width"],
+    #    buffer_size = env.config.jet.jet_params["buffer_size"]
+    #    batch_size = env.config.jet.jet_params["batch_size"],
+    #    lr = env.config.jet.jet_params["learning_rate"],
+    #    GAMMA = env.config.jet.jet_params["gamma"],
+    #    TAU = env.config.jet.jet_params["tau"],
+    #    ) # instantiate the ddpg algorithm
+    
+    strategy = env.config.jet.jet_strategy_name
+    module_path = strategy # Will lead to Control eventually
+    agent_module = importlib.import_module(module_path)
+    agent_class = getattr(agent_module, "agent")
+
+    agent = agent_class(
+        state_dim,
+        action_dim,
+        max_action,
+        hidden_width=env.config.jet.jet_params["hidden_width"],
+        buffer_size=env.config.jet.jet_params["buffer_size"],
+        batch_size=env.config.jet.jet_params["batch_size"],
+        lr=env.config.jet.jet_params["learning_rate"],
+        GAMMA=env.config.jet.jet_params["gamma"],
+        TAU=env.config.jet.jet_params["tau"],
+    )
 
     best_ckpt = train(env, agent) # Train the algorithm. Method above.
 

@@ -304,21 +304,6 @@ impl FlowType {
 
 // ----------------------------------JET ACTUATOR----------------------------------
 
-//#[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
-//pub(crate) enum JetActuator {
-//    /// no blowing boundary‑condition
-//    None,
-//    /// open‑loop strategies: constant, sinusoidal, DMDc
-//    #[clap(subcommand)]
-//    OpenLoop(OpenLoopActuator),
-//    /// classical (PID, LQR …) — placeholder for future expansion
-//    #[clap(subcommand)]
-//    Classical(ClassicalActuator),
-//    /// learning‑based (RL) strategies
-//    #[clap(subcommand)]
-//    LearningBased(LearningBasedActuator),
-//}
-
 #[derive(ValueEnum, Debug, Clone, Serialize, Deserialize)]
 pub enum JetMethod { 
     None, 
@@ -386,48 +371,6 @@ impl From<JetActuatorCli> for JetActuator {
         }
     }
 }
-
-/*
-impl JetActuatorCli {
-    /// Streams’ `blowing_bc` uses 0 for no blowing and 1 for any jet actuation
-    pub(crate) fn blowing_bc_as_streams_int(&self) -> u8 {
-        match self {
-            JetActuator::None => 0,
-            _ => 1,
-        }
-    }
-    /// slot‑start index as expected by the solver (‑1 => unused)
-    pub(crate) fn slot_start_as_streams_int(&self) -> i32 {
-        match self {
-            JetActuator::None => -1,
-            JetActuator::OpenLoop(kind) => match kind {
-                OpenLoopActuator::Constant { slot_start, .. }
-                | OpenLoopActuator::Sinusoidal { slot_start, .. }
-                | OpenLoopActuator::DMDc { slot_start, .. } => *slot_start as i32,
-            },
-            JetActuator::LearningBased(
-                LearningBasedActuator { slot_start, .. }
-            ) => *slot_start as i32,
-            JetActuator::Classical(_) => -1,
-        }
-    }
-    /// slot‑end index as expected by the solver (‑1 => unused)
-    pub(crate) fn slot_end_as_streams_int(&self) -> i32 {
-        match self {
-            JetActuator::None => -1,
-            JetActuator::OpenLoop(kind) => match kind {
-                OpenLoopActuator::Constant { slot_end, .. }
-                | OpenLoopActuator::Sinusoidal { slot_end, .. }
-                | OpenLoopActuator::DMDc { slot_end, .. } => *slot_end as i32,
-            },
-            JetActuator::LearningBased(
-                LearningBasedActuator { slot_end, .. }
-            ) => *slot_end as i32,
-            JetActuator::Classical(_) => -1,
-        }
-    }
-}
-*/
 
 impl JetActuator {
     pub fn blowing_bc_as_streams_int(&self) -> u8 {
@@ -564,6 +507,12 @@ pub(crate) struct DdpgArgs {
     
     #[clap(long, default_value_t = 42)]   
     pub(crate) seed: u64,
+    
+    #[clap(long, default_value_t = 8)] 
+    pub(crate) hidden_width: u64,
+    
+    #[clap(long, default_value_t = 50)] 
+    pub(crate) batch_size: u64,
     
     #[clap(long, default_value_t = 3e-4)] 
     pub(crate) learning_rate: f64,

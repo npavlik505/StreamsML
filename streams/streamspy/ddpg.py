@@ -3,6 +3,8 @@
 #Add to python path
 import os
 import sys
+from pathlib import Path
+
 PROJECT_ROOT = os.path.abspath(os.path.join(
     os.path.dirname(__file__),
     os.pardir)
@@ -17,6 +19,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import time
 import inspect
+
+from base_agent import BaseAgent
 
 #Define actor and critic NN.
 # Actor produces single action; The state is inputed, the action is out made continuous by multiplying max acion with tanh(NN output)
@@ -51,7 +55,7 @@ class Critic(nn.Module):  # According to (s,a), directly calculate Q(s,a)
 # Replay buffer stores 1000 state, action, reward, next state, change in weights (S,A,R,S_,dw) data sets
 class ReplayBuffer(object):
     # Specifies max number of SARSA tuples collected (max_size) and creates matrices to store the collected data
-    def __init__(self, state_dim: int, action_dim: int, max_size: int = int(1e6)):
+    def __init__(self, state_dim: int, action_dim: int, max_size: int):
         self.max_size = max_size
         self.count = 0
         self.size = 0
@@ -81,48 +85,39 @@ class ReplayBuffer(object):
 #This the policy gradient algorithm, notice this uses the actor and critic classes made earlier
 #The hyperparameters are defined, the actor & critc NN are defined as attributes and their Target NN are created
 #Lastly, the optimizer, Adam, is selected to adjust the NN weights and the MSELoss is selected for use in the backprop calc
-class ddpg(object):
-    def __init__(self, state_dim, action_dim, max_action):
-        self.hidden_width = 8  # The number of neurons in hidden layers of the neural network
-        self.batch_size = 50 #100  # batch size
-        self.GAMMA = 0.99  # discount factor
-        self.TAU = 0.005  # Softly update the target network
-        self.lr = 3e-4  # learning rate
+class agent(BaseAgent):
+    def __init__(self, state_dim, action_dim, max_action, hidden_width, buffer_size, batch_size, lr, GAMMA, TAU):
+        self.hidden_width = hidden_width  # The number of neurons in hidden layers of the neural network
+        self.batch_size = batch_size #100  # batch size
+        self.GAMMA = GAMMA # 0.99 discount factor
+        self.TAU = TAU # 0.005 Softly update the target network
+        self.lr = lr # 3e-4 learning rate
 
         self.actor = Actor(state_dim, action_dim, self.hidden_width, max_action)
         self.actor_target = copy.deepcopy(self.actor)
 
         self.critic = Critic(state_dim, action_dim, self.hidden_width)
         self.critic_target = copy.deepcopy(self.critic)
+        
+        self.replay_buffer = ReplayBuffer(state_dim, action_dim, buffer_size)
 
         self.run_timestamp = time.strftime("%Y%m%d.%H%M%S")
         self.run_name = self.run_timestamp
 
-        #This call saves the initial network params (for verification) unless called from the Analysis folder
-        if not self.is_called_from_analysis_folder():
-            self.initialize_networks()
+        self.initialize_networks()
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
 
         self.MseLoss = nn.MSELoss()
 
-    def initialize_networks(self):
+    def initialize_networks(self) -> None:
         save_dir = f"{self.run_name}/Initial_Parameters"
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir, exist_ok=True)
-
-        torch.save(self.actor.state_dict(), os.path.join(save_dir, 'InitialActorParameters.pt'))
-        torch.save(self.actor_target.state_dict(), os.path.join(save_dir, 'InitialActorTargetParameters.pt'))
-        torch.save(self.critic.state_dict(), os.path.join(save_dir, 'InitialCriticParameters.pt'))
-        torch.save(self.critic_target.state_dict(), os.path.join(save_dir, 'InitialCriticTargetParameters.pt'))        
-
-    def is_called_from_analysis_folder(self):
-        frame = inspect.currentframe().f_back.f_back
-        module = inspect.getmodule(frame)
-        if module and module.__file__:
-            return 'Analysis' in module.__file__
-        return False
+        Path(save_dir).mkdir(parents=True, exist_ok=True)
+        torch.save(self.actor.state_dict(), os.path.join(save_dir, "InitialActorParameters.pt"))
+        torch.save(self.actor_target.state_dict(), os.path.join(save_dir, "InitialActorTargetParameters.pt"))
+        torch.save(self.critic.state_dict(), os.path.join(save_dir, "InitialCriticParameters.pt"))
+        torch.save(self.critic_target.state_dict(), os.path.join(save_dir, "InitialCriticTargetParameters.pt"))
 
     # An action is chosen by feeding the state into the actor NN which outputs the action a
     def choose_action(self, s):
@@ -131,8 +126,17 @@ class ddpg(object):
         return a
 
     # We use our sample method, previously defined, to select the SARS_dw samples
-    def learn(self, replay_buffer):
-        batch_s, batch_a, batch_r, batch_s_= replay_buffer.sample(self.batch_size) # Sample a batch
+    def learn(self, obs, action, reward, next_obs):
+        self.replay_buffer.store(
+            torch.tensor(obs, dtype=torch.float32),
+            torch.tensor(action, dtype=torch.float32),
+            torch.tensor([reward], dtype=torch.float32),
+            torch.tensor(next_obs, dtype=torch.float32),
+        )
+        if self.replay_buffer.size < self.batch_size:
+            return
+            
+        batch_s, batch_a, batch_r, batch_s_= self.replay_buffer.sample(self.batch_size) # Sample a batch
 
         # Compute the target Q. This is done with no_grad so the target Q NN weights won't be adjusted every learning
         with torch.no_grad():  # target_Q has no gradient
@@ -169,4 +173,14 @@ class ddpg(object):
         for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
             target_param.data.copy_(self.TAU * param.data + (1 - self.TAU) * target_param.data)
 
-        return actor_loss.item(), critic_loss.item()
+        actor_loss, critic_loss = actor_loss.item(), critic_loss.item()
+        LOGGER.debug("actor_loss=%f critic_loss=%f", actor_loss, critic_loss)
+            
+    def save_checkpoint(self, directory: Path, tag: str) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        torch.save(self.actor.state_dict(), directory / f"actor_{tag}.pt")
+        torch.save(self.critic.state_dict(), directory / f"critic_{tag}.pt")
+
+    def load_checkpoint(self, checkpoint: Path) -> None:
+        self.actor.load_state_dict(torch.load(checkpoint.with_name("actor_best.pt")))
+        self.critic.load_state_dict(torch.load(checkpoint.with_name("critic_best.pt")))
