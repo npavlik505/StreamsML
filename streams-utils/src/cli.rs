@@ -471,6 +471,8 @@ pub(crate) struct PlaceholderArgs {
 pub(crate) enum LearningBasedActuator {
     /// Deep-determinstic policy gradient
     Ddpg(DdpgArgs),
+    /// Deep Q Network
+    Dqn(DqnArgs),
 }
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 /// Fields that are configurable but standard for most learning based control strategies 
@@ -527,8 +529,66 @@ pub(crate) struct DdpgArgs {
     pub(crate) buffer_size: usize,
 }
 
+#[derive(Parser, Debug, Clone, Serialize, Deserialize)]
+/// Fields that are configurable but standard for most learning based control strategies 
+pub(crate) struct DqnArgs {
+    #[clap(long)]
+    pub(crate) slot_start: usize,
 
+    #[clap(long)]
+    pub(crate) slot_end: usize,
+    
+    #[clap(long, default_value_t = 1.0)] 
+    pub(crate) amplitude: f64,
 
+    #[clap(long, default_value_t = 10)]
+    pub(crate) train_episodes: usize,
+
+    #[clap(long, default_value = "/RL_metrics/training")]
+    pub(crate) training_output: String,
+    
+    #[clap(long, default_value_t = 10)]
+    pub(crate) eval_episodes:      usize,
+    
+    #[clap(long, default_value_t = 1000)]
+    pub(crate) eval_max_steps:     usize,
+    
+    #[clap(long, default_value = "/RL_metrics/eval")]
+    pub(crate) eval_output:  String,
+    
+    #[clap(long, default_value_t = 5)]
+    pub(crate) checkpoint_interval: usize,
+    
+    #[clap(long, default_value = "/RL_metrics/checkpoint")]
+    pub(crate) checkpoint_dir: String,
+    
+    #[clap(long, default_value_t = 42)]   
+    pub(crate) seed: u64,
+    
+    #[clap(long, default_value_t = 8)] 
+    pub(crate) hidden_width: u64,
+    
+    #[clap(long, default_value_t = 50)] 
+    pub(crate) batch_size: u64,
+    
+    #[clap(long, default_value_t = 3e-4)] 
+    pub(crate) learning_rate: f64,
+    
+    #[clap(long, default_value_t = 1000)] 
+    pub(crate) target_update: u64,
+    
+    #[clap(long, default_value_t = 0.99)] 
+    pub(crate) gamma: f64,
+    
+    #[clap(long, default_value_t = 0.005)] 
+    pub(crate) tau: f64,
+    
+    #[clap(long, default_value_t = 0.05)] 
+    pub(crate) epsilon: f64,
+    
+    #[clap(long, default_value_t = 1_000_000)] 
+    pub(crate) buffer_size: usize,
+}
 
 #[derive(Debug, Clone, Parser)]
 pub(crate) struct BlowingSlot {}

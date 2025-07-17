@@ -12,7 +12,12 @@ class BaseAgent(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def learn(self, *args, **kwargs):
+    def store(self, *args, **kwargs):
+        """Update agent using transition data."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def learn(self):
         """Update agent using transition data."""
         raise NotImplementedError
 

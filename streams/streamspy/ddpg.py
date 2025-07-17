@@ -125,7 +125,6 @@ class agent(BaseAgent):
         a = self.actor(s).data.numpy().flatten()
         return a
 
-    # We use our sample method, previously defined, to select the SARS_dw samples
     def learn(self, obs, action, reward, next_obs):
         self.replay_buffer.store(
             torch.tensor(obs, dtype=torch.float32),

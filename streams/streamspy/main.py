@@ -116,7 +116,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
             training_steps = env.max_episode_steps
             observation_dim = env.observation_space.shape[0]
             
-            # Define frequency of collection
+            # Define frequency of collection (clunky... revisit)
             if training_steps/10 >= 1:
                 write_spacing = training_steps // 10
             else:
@@ -148,12 +148,12 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 done = comm.bcast(done, root=0)
                 if rank == 0:
                     ep_reward += reward
+                    agent.learn(obs, action, reward, next_obs)
                     if write_training and step % write_spacing == 0:
                         time_dset[ep, step] = info["time"]
                         amp_dset[ep, step] = action
                         reward_dset[ep, step] = reward
                         obs_dset[ep, step, :] = obs
-                        agent.learn(obs, action, reward, next_obs)
                 step += 1
                 obs = next_obs
             if rank == 0:
@@ -161,11 +161,11 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 LOGGER.info("Training Episode %d reward %.6f", ep + 1, ep_reward)
                 if ep_reward > best_reward:
                     best_reward = ep_reward
-                    agent.save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), "best")
+                    agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), "best")
                 if (ep + 1) % env.config.jet.jet_params["checkpoint_interval"] == 0:
-                    agent.save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), f"ep{ep + 1}")
+                    agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), f"ep{ep + 1}")
         if rank == 0 and not STOP:
-            agent.save_checkpoint(agent, Path(env.config.jet.jet_params["checkpoint_dir"]), "final")
+            agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), "final")
         print("Just before h5train.close()")
         if write_training:
             comm.Barrier()
@@ -257,37 +257,31 @@ elif env.config.jet.jet_method_name == "LearningBased":
         print(f'state_dim: {state_dim}')
         print(f'action_dim: {action_dim}')
         print(f'max_action: {max_action}')
-
-    # agent = ddpg(state_dim, action_dim, max_action,
-    #    hidden_width = env.config.jet.jet_params["hidden_width"],
-    #    buffer_size = env.config.jet.jet_params["buffer_size"]
-    #    batch_size = env.config.jet.jet_params["batch_size"],
-    #    lr = env.config.jet.jet_params["learning_rate"],
-    #    GAMMA = env.config.jet.jet_params["gamma"],
-    #    TAU = env.config.jet.jet_params["tau"],
-    #    ) # instantiate the ddpg algorithm
     
     strategy = env.config.jet.jet_strategy_name
     module_path = strategy # Will lead to Control eventually
     agent_module = importlib.import_module(module_path)
     agent_class = getattr(agent_module, "agent")
 
-    agent = agent_class(
-        state_dim,
-        action_dim,
-        max_action,
-        hidden_width=env.config.jet.jet_params["hidden_width"],
-        buffer_size=env.config.jet.jet_params["buffer_size"],
-        batch_size=env.config.jet.jet_params["batch_size"],
-        lr=env.config.jet.jet_params["learning_rate"],
-        GAMMA=env.config.jet.jet_params["gamma"],
-        TAU=env.config.jet.jet_params["tau"],
-    )
+    # include all parameters required for the initialization of any LearningBased agent 
+    agent_kwargs = {
+        "hidden_width": env.config.jet.jet_params["hidden_width"],
+        "buffer_size":  env.config.jet.jet_params["buffer_size"],
+        "batch_size":   env.config.jet.jet_params["batch_size"],
+        "lr":           env.config.jet.jet_params["learning_rate"],
+        "target_update":env.config.jet.jet_params.get("target_update"),
+        "GAMMA":        env.config.jet.jet_params["gamma"],
+        "TAU":          env.config.jet.jet_params["tau"],
+        "epsilon":      env.config.jet.jet_params.get("epsilon"),
+    } 
+    
+    # keeps only the parameters that the selected agent accepts
+    sig = inspect.signature(agent_class.__init__)
+    filtered = {k: v for k, v in agent_kwargs.items() if k in sig.parameters}
 
+    agent = agent_class(state_dim, action_dim, max_action, **filtered)
     best_ckpt = train(env, agent) # Train the algorithm. Method above.
-
     evaluate(env, agent, best_ckpt) # Evaluate the algorithm. Method Above.
-
     env.close()
 
 else:
