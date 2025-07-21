@@ -63,7 +63,7 @@ config:
 		--use-python \
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
-		learning-based ddpg \
+		learning-based dqn \
 		    --slot-start 100 \
 		    --slot-end 149 \
 		    --train-episodes 2 \
@@ -75,15 +75,14 @@ config:
 		    --checkpoint-dir {{checkpoint}} \
 		    --seed 42 \
 		    --amplitude 1.0 \
+		    --hidden-width 8 \
+		    --batch-size 50 \
 		    --learning-rate 0.0003 \
+		    --target-update 1000 \
 		    --gamma 0.99 \
 		    --tau 0.005 \
+		    --epsilon 0.05 \
 		    --buffer-size 100000
-
-	cat {{config_output}}
-
-
-	cat {{config_output}}
 
 
 	cat {{config_output}}

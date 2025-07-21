@@ -243,11 +243,11 @@ def init_actuator(rank: int, config: Config) -> AbstractActuator:
         exit()
     
     elif jet_config.jet_method_name == "LearningBased":
-        if jet_config.jet_strategy_name in ("ddpg"):
+        if jet_config.jet_strategy_name in ("ddpg", "dqn","ppo"):
             slot_start = jet_config.jet_params["slot_start"]
             slot_end = jet_config.jet_params["slot_end"]
             amplitude = jet_config.jet_params["amplitude"]
             return AdaptiveActuator(amplitude, slot_start, slot_end, rank, config);
     else:
-        print('Learning based algorithm does not match available options: DDPG')
+        print('Learning based algorithm does not match available options: ddpg, dqn')
         exit()

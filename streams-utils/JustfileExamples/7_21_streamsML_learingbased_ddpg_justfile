@@ -9,6 +9,7 @@ nv:
 	taskset -c 0-15 sudo apptainer build --sandbox \
 		nv.sandbox \
 		"docker://nvcr.io/nvidia/nvhpc:24.7-devel-cuda_multi-ubuntu22.04"	
+# "docker://nvcr.io/nvidia/nvhpc:25.3-devel-cuda_multi-ubuntu22.04"
 
 base:
 	mkdir -p $APPTAINER_TMPDIR
@@ -79,12 +80,6 @@ config:
 		    --gamma 0.99 \
 		    --tau 0.005 \
 		    --buffer-size 100000
-
-	cat {{config_output}}
-
-
-	cat {{config_output}}
-
 
 	cat {{config_output}}
 

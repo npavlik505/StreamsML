@@ -57,6 +57,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
     # from config import Config, Jet
     from base_agent import BaseAgent
     import io_utils
+    import inspect
 
     LOGGER = logging.getLogger(__name__)
     STOP = False
@@ -264,15 +265,21 @@ elif env.config.jet.jet_method_name == "LearningBased":
     agent_class = getattr(agent_module, "agent")
 
     # include all parameters required for the initialization of any LearningBased agent 
+    # Note to self: Consider collapsing all learning-based structs into one single struct with default values and let Python
+    # initialize an algorithm based on the match method below. 
+    # Pros: Simpler Rust code and edit, less redundancy, and less frequent Rust edits. 
+    # Cons: Giant Rust struct and json file when scaled up, and less informative Rust errors and help function. 
     agent_kwargs = {
-        "hidden_width": env.config.jet.jet_params["hidden_width"],
-        "buffer_size":  env.config.jet.jet_params["buffer_size"],
-        "batch_size":   env.config.jet.jet_params["batch_size"],
-        "lr":           env.config.jet.jet_params["learning_rate"],
+        "hidden_width": env.config.jet.jet_params.get("hidden_width"),
+        "buffer_size":  env.config.jet.jet_params.get("buffer_size"),
+        "batch_size":   env.config.jet.jet_params.get("batch_size"),
+        "lr":           env.config.jet.jet_params.get("learning_rate"),
         "target_update":env.config.jet.jet_params.get("target_update"),
-        "GAMMA":        env.config.jet.jet_params["gamma"],
-        "TAU":          env.config.jet.jet_params["tau"],
+        "GAMMA":        env.config.jet.jet_params.get("gamma"),
+        "TAU":          env.config.jet.jet_params.get("tau"),
         "epsilon":      env.config.jet.jet_params.get("epsilon"),
+        "eps_clip":     env.config.jet.jet_params.get("eps_clip"),
+        "K_epochs":     env.config.jet.jet_params.get("K_epochs"),
     } 
     
     # keeps only the parameters that the selected agent accepts

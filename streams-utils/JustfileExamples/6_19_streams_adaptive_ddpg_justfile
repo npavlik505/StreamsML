@@ -8,7 +8,7 @@ nv:
 
 	taskset -c 0-15 sudo apptainer build --sandbox \
 		nv.sandbox \
-		"docker://nvcr.io/nvidia/nvhpc:24.7-devel-cuda_multi-ubuntu22.04"	
+		"docker://nvcr.io/nvidia/nvhpc:24.7-devel-cuda_multi-ubuntu22.04"
 
 base:
 	mkdir -p $APPTAINER_TMPDIR
@@ -42,9 +42,10 @@ config:
 	echo {{config_output}}
 
 	# 600, 208, 100
+	#--fixed-dt 0.0008439 \
 
-	cargo r -- \
-		config-generator {{config_output}} {{streams_flow_type}} \
+	cargo r -- config-generator {{config_output}} \
+		{{streams_flow_type}} \
 		--steps 6 \
 		--reynolds-number 250 \
 		--mach-number 2.28 \
@@ -63,28 +64,22 @@ config:
 		--use-python \
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
-		learning-based ddpg \
-		    --slot-start 100 \
-		    --slot-end 149 \
-		    --train-episodes 2 \
-		    --training-output {{training}} \
-		    --eval-episodes 2 \
-		    --eval-max-steps 6 \
-		    --eval-output {{eval}} \
-		    --checkpoint-interval 5 \
-		    --checkpoint-dir {{checkpoint}} \
-		    --seed 42 \
-		    --amplitude 1.0 \
-		    --learning-rate 0.0003 \
-		    --gamma 0.99 \
-		    --tau 0.005 \
-		    --buffer-size 100000
-
-	cat {{config_output}}
-
-
-	cat {{config_output}}
-
+		adaptive \
+			--amplitude 1.0 \
+			--slot-start 100 \
+			--slot-end 149 \
+			--train-episodes 2 \
+			--eval-episodes 2 \
+			--eval-max-steps 6 \
+			--checkpoint-dir {{checkpoint}} \
+			--checkpoint-interval 5 \
+			--seed 42 \
+			--learning-rate 0.0003 \
+			--gamma 0.99 \
+			--tau 0.005 \
+			--buffer-size 100000 \
+			--eval-output {{eval}} \
+			--training-output {{training}} \
 
 	cat {{config_output}}
 

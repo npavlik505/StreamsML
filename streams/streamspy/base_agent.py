@@ -11,10 +11,10 @@ class BaseAgent(ABC):
         """Return action for given observation."""
         raise NotImplementedError
 
-    @abstractmethod
-    def store(self, *args, **kwargs):
-        """Update agent using transition data."""
-        raise NotImplementedError
+    # @abstractmethod
+    # def store(self, *args, **kwargs):
+    #     """Update agent using transition data."""
+    #     raise NotImplementedError
 
     @abstractmethod
     def learn(self):
