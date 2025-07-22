@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import time
 
-from base_agent import BaseAgent
+from ..base_agent import BaseAgent
 
 
 class QNetwork(nn.Module):

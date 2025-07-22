@@ -30,15 +30,21 @@ build:
 
 
 
-# build a config json file as input to the solver
-config_output := "./output/input.json"
 #streams_flow_type := "shock-boundary-layer"
 streams_flow_type := "boundary-layer"
-eval := "./RL_metrics/evaluation"
-training := "./RL_metrics/training"
-checkpoint := "./RL_metrics/checkpoint"
+
+# build a config json file as input to the solver
+results_dir := "$STREAMS_DIR/streamspy/output"
+eval := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/evaluation"
+training := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/training"
+checkpoint := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/checkpoint"
+
+# build a config json file as input to the solver
+config_output := "$STREAMS_DIR/streamspy/output/input.json"
 
 config:
+	rm -rf {{results_dir}}
+	mkdir {{results_dir}}
 	echo {{config_output}}
 
 	# 600, 208, 100
@@ -83,17 +89,10 @@ config:
 	cat {{config_output}}
 
 
-	cat {{config_output}}
-
-
-	cat {{config_output}}
-
-
-
 run:
 	cargo r -- run-local \
-		--workdir ./output/ \
-		--config ./output/input.json \
+		--workdir {{results_dir}}/ \
+		--config {{config_output}} \
 		--database {{database_bl}} \
 		--python-mount $STREAMS_DIR/streamspy \
 		16

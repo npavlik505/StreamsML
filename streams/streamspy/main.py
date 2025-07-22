@@ -260,7 +260,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
         print(f'max_action: {max_action}')
     
     strategy = env.config.jet.jet_strategy_name
-    module_path = strategy # Will lead to Control eventually
+    module_path = f"Control.{strategy}"
     agent_module = importlib.import_module(module_path)
     agent_class = getattr(agent_module, "agent")
 

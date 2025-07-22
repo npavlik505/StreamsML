@@ -12,7 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 
-from base_agent import BaseAgent
+from ..base_agent import BaseAgent
 
 
 class ActorCritic(nn.Module):
