@@ -70,7 +70,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
 
     signal.signal(signal.SIGINT, _signal_handler)
 
-    def setup_logging() -> None:
+    def setup_logging() -> None: # Is this worth keeping now that we have H5 files generated for data... ?
         """Configure root logger to log to console and file."""
         LOGGER.setLevel(logging.INFO)
         fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
@@ -96,15 +96,16 @@ elif env.config.jet.jet_method_name == "LearningBased":
         
         # print("[rl_control.py] Define reward objects")
         best_reward = -float("inf")
-        best_path = Path(env.config.jet.jet_params["checkpoint_dir"]) / "best"
         episode_rewards = []
+        best_path = Path(env.config.jet.jet_params["checkpoint_dir"]) / "best"
         
         # open output file for training statistics on all ranks
-        metrics_path = Path(env.config.jet.jet_params["checkpoint_dir"]) / "training.h5"
-        metrics_path.parent.mkdir(parents=True, exist_ok=True)
-        h5 = io_utils.IoFile(str(metrics_path))
-        loss_writes = env.config.jet.jet_params["train_episodes"] * env.max_episode_steps
-        ep_dset = io_utils.Scalar0D(h5, [1], env.config.jet.jet_params["train_episodes"], "episode_reward", rank)
+        # metrics_path = Path(env.config.jet.jet_params["checkpoint_dir"]) / "training.h5"
+        # metrics_path = Path(env.config.jet.jet_params["checkpoint_dir"])
+        # metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        # h5 = io_utils.IoFile(str(metrics_path))
+        # loss_writes = env.config.jet.jet_params["train_episodes"] * env.max_episode_steps
+        # ep_dset = io_utils.Scalar0D(h5, [1], env.config.jet.jet_params["train_episodes"], "episode_reward", rank)
         
         # open output file for time, amp, reward, and obs in the training loop to be collected
         write_training = env.config.jet.jet_params["training_output"] is not None
@@ -118,10 +119,10 @@ elif env.config.jet.jet_method_name == "LearningBased":
             observation_dim = env.observation_space.shape[0]
             
             # Define frequency of collection (clunky... revisit)
-            if training_steps/10 >= 1:
-                write_spacing = training_steps // 10
-            else:
-                write_spacing = 1
+            # if training_steps/10 >= 1:
+            #     write_spacing = training_steps // 10
+            # else:
+            #     write_spacing = 1
             
             # Create datasets within the h5 file
             time_dset = h5train.file.create_dataset("time", shape = (training_episodes, training_steps), dtype = "f4")
@@ -150,29 +151,29 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 if rank == 0:
                     ep_reward += reward
                     agent.learn(obs, action, reward, next_obs)
-                    if write_training and step % write_spacing == 0:
-                        time_dset[ep, step] = info["time"]
-                        amp_dset[ep, step] = action
-                        reward_dset[ep, step] = reward
-                        obs_dset[ep, step, :] = obs
+                    # if write_training and step % write_spacing == 0:
+                    time_dset[ep, step] = info["time"]
+                    amp_dset[ep, step] = action
+                    reward_dset[ep, step] = reward
+                    obs_dset[ep, step, :] = obs
                 step += 1
                 obs = next_obs
             if rank == 0:
                 episode_rewards.append(ep_reward)
                 LOGGER.info("Training Episode %d reward %.6f", ep + 1, ep_reward)
-                if ep_reward > best_reward:
+                if ep_reward > best_reward: # 
                     best_reward = ep_reward
-                    agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), "best")
+                    agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), "best") # Saves network parameters of the best performing episode
                 if (ep + 1) % env.config.jet.jet_params["checkpoint_interval"] == 0:
-                    agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), f"ep{ep + 1}")
+                    agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), f"ep{ep + 1}") # Saves network parameters every "checkpoint_dir" number of episodes
         if rank == 0 and not STOP:
             agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), "final")
         print("Just before h5train.close()")
         if write_training:
             comm.Barrier()
             h5train.close()
-        ep_dset.close()
-        h5.close()
+        # ep_dset.close()
+        # h5.close()
         
         return best_path
 
@@ -197,10 +198,10 @@ elif env.config.jet.jet_method_name == "LearningBased":
             observation_dim = env.observation_space.shape[0]
             
             # Define frequency of collection
-            if eval_steps/10 >= 1:
-                write_spacing = eval_steps // 10
-            else:
-                write_spacing = 1
+            # if eval_steps/10 >= 1:
+            #     write_spacing = eval_steps // 10
+            # else:
+            #     write_spacing = 1
             
             # Create datasets within the h5 file
             time_dset = h5eval.file.create_dataset("time", shape = (eval_episodes, eval_steps), dtype = "f4")
@@ -225,11 +226,11 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 done = comm.bcast(done, root=0)
                 if rank == 0:
                     ep_reward += reward
-                    if write_eval and step % write_spacing == 0:
-                        time_dset[ep, step] = info["time"]
-                        amp_dset[ep, step] = action
-                        reward_dset[ep, step] = reward
-                        obs_dset[ep, step, :] = obs
+                    # if write_eval and step % write_spacing == 0:
+                    time_dset[ep, step] = info["time"]
+                    amp_dset[ep, step] = action
+                    reward_dset[ep, step] = reward
+                    obs_dset[ep, step, :] = obs
                 step += 1
             if rank == 0:
                 LOGGER.info("Eval Episode %d reward %.6f", ep + 1, ep_reward)
@@ -240,7 +241,14 @@ elif env.config.jet.jet_method_name == "LearningBased":
 
 
     if __name__ == "__main__":
-        setup_logging()
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--eval-only", action="store_true",
+                            help="skip training and only run evaluation")
+        parser.add_argument("--checkpoint", type=Path,
+                            help="path to checkpoint to load for evaluation")
+        args = parser.parse_args()
+        
+        # setup_logging()
 
     # Generate random number via torch. Not used now but present for future restart use.
     torch.manual_seed(env.config.jet.jet_params["seed"])
@@ -270,16 +278,17 @@ elif env.config.jet.jet_method_name == "LearningBased":
     # Pros: Simpler Rust code and edit, less redundancy, and less frequent Rust edits. 
     # Cons: Giant Rust struct and json file when scaled up, and less informative Rust errors and help function. 
     agent_kwargs = {
+        "checkpoint_dir": env.config.jet.jet_params.get("checkpoint_dir"),
         "hidden_width": env.config.jet.jet_params.get("hidden_width"),
-        "buffer_size":  env.config.jet.jet_params.get("buffer_size"),
-        "batch_size":   env.config.jet.jet_params.get("batch_size"),
-        "lr":           env.config.jet.jet_params.get("learning_rate"),
-        "target_update":env.config.jet.jet_params.get("target_update"),
-        "GAMMA":        env.config.jet.jet_params.get("gamma"),
-        "TAU":          env.config.jet.jet_params.get("tau"),
-        "epsilon":      env.config.jet.jet_params.get("epsilon"),
-        "eps_clip":     env.config.jet.jet_params.get("eps_clip"),
-        "K_epochs":     env.config.jet.jet_params.get("K_epochs"),
+        "buffer_size": env.config.jet.jet_params.get("buffer_size"),
+        "batch_size": env.config.jet.jet_params.get("batch_size"),
+        "lr": env.config.jet.jet_params.get("learning_rate"),
+        "target_update" :env.config.jet.jet_params.get("target_update"),
+        "GAMMA": env.config.jet.jet_params.get("gamma"),
+        "TAU": env.config.jet.jet_params.get("tau"),
+        "epsilon": env.config.jet.jet_params.get("epsilon"),
+        "eps_clip": env.config.jet.jet_params.get("eps_clip"),
+        "K_epochs": env.config.jet.jet_params.get("K_epochs"),
     } 
     
     # keeps only the parameters that the selected agent accepts
@@ -287,8 +296,13 @@ elif env.config.jet.jet_method_name == "LearningBased":
     filtered = {k: v for k, v in agent_kwargs.items() if k in sig.parameters}
 
     agent = agent_class(state_dim, action_dim, max_action, **filtered)
-    best_ckpt = train(env, agent) # Train the algorithm. Method above.
-    evaluate(env, agent, best_ckpt) # Evaluate the algorithm. Method Above.
+
+    if args.eval_only:
+        ckpt = args.checkpoint if args.checkpoint is not None else Path(env.config.jet.jet_params["checkpoint_dir"]) / "best"
+        evaluate(env, agent, ckpt)
+    else:
+        best_ckpt = train(env, agent)
+        evaluate(env, agent, best_ckpt)
     env.close()
 
 else:

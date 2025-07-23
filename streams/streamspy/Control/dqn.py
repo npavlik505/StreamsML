@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import time
 
-from ..base_agent import BaseAgent
+from streamspy.base_agent import BaseAgent
 
 
 class QNetwork(nn.Module):
@@ -73,18 +73,21 @@ class agent(BaseAgent):
 
         self.replay_buffer = ReplayBuffer(state_dim, buffer_size)
 
-        self.run_timestamp = time.strftime("%Y%m%d.%H%M%S")
-        self.run_name = self.run_timestamp
+        # self.run_timestamp = time.strftime("%Y%m%d.%H%M%S")
+        # self.run_name = self.run_timestamp
+        self.checkpoint = checkpoint_dir
+        
         self.initialize_networks()
 
         self.optimizer = torch.optim.Adam(self.q.parameters(), lr=self.lr)
         self.loss_fn = nn.MSELoss()
 
     def initialize_networks(self) -> None:
-        save_dir = f"{self.run_name}/Initial_Parameters"
+        # save_dir = f"{self.run_name}/Initial_Parameters"
+        save_dir = f"{self.checkpoint}"
         Path(save_dir).mkdir(parents=True, exist_ok=True)
-        torch.save(self.q.state_dict(), os.path.join(save_dir, "InitialQParameters.pt"))
-        torch.save(self.q_target.state_dict(), os.path.join(save_dir, "InitialQTargetParameters.pt"))
+        torch.save(self.q.state_dict(), os.path.join(save_dir, "q_initial.pt"))
+        torch.save(self.q_target.state_dict(), os.path.join(save_dir, "targetq_initial.pt"))
 
     def choose_action(self, s):
         if np.random.rand() < self.epsilon:
@@ -129,5 +132,7 @@ class agent(BaseAgent):
         torch.save(self.q.state_dict(), directory / f"q_{tag}.pt")
 
     def load_checkpoint(self, checkpoint: Path) -> None:
-        self.q.load_state_dict(torch.load(checkpoint.with_name("q_best.pt")))
+        directory = checkpoint.parent
+        tag = checkpoint.name
+        self.q.load_state_dict(torch.load(directory / f"q_{tag}.pt"))
         self.q_target.load_state_dict(self.q.state_dict())

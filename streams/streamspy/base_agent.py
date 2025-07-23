@@ -28,5 +28,11 @@ class BaseAgent(ABC):
 
     @abstractmethod
     def load_checkpoint(self, checkpoint: Path) -> None:
-        """Load model parameters from *checkpoint* path."""
+        """Load model parameters from *checkpoint* path.
+
+        The ``checkpoint`` argument should reference a file-like path where the
+        name indicates the tag to load, e.g. ``Path("checkpoint/ep10")``.
+        Implementations should resolve the directory and tag to load the
+        appropriate parameters.
+        """
         raise NotImplementedError

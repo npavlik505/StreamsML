@@ -12,7 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 
-from ..base_agent import BaseAgent
+from streamspy.base_agent import BaseAgent
 
 
 class ActorCritic(nn.Module):
@@ -69,14 +69,17 @@ class agent(BaseAgent):
 
         self.memory = []
 
-        self.run_timestamp = time.strftime("%Y%m%d.%H%M%S")
-        self.run_name = self.run_timestamp
+        # self.run_timestamp = time.strftime("%Y%m%d.%H%M%S")
+        # self.run_name = self.run_timestamp
+        self.checkpoint = checkpoint_dir
+        
         self.initialize_networks()
 
     def initialize_networks(self) -> None:
-        save_dir = f"{self.run_name}/Initial_Parameters"
+        # save_dir = f"{self.run_name}/Initial_Parameters"
+        save_dir = f"{self.checkpoint}"
         Path(save_dir).mkdir(parents=True, exist_ok=True)
-        torch.save(self.policy.state_dict(), os.path.join(save_dir, "InitialPolicy.pt"))
+        torch.save(self.policy.state_dict(), os.path.join(save_dir, "policy_initial.pt"))
 
     def choose_action(self, s: torch.Tensor):
         state = torch.unsqueeze(torch.clone(s), 0)
@@ -136,6 +139,8 @@ class agent(BaseAgent):
         torch.save(self.policy.state_dict(), directory / f"policy_{tag}.pt")
 
     def load_checkpoint(self, checkpoint: Path) -> None:
-        self.policy.load_state_dict(torch.load(checkpoint.with_name("policy_best.pt")))
+        directory = checkpoint.parent
+        tag = checkpoint.name
+        self.policy.load_state_dict(torch.load(directory / f"policy_{tag}.pt"))
 
 

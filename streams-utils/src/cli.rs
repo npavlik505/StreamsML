@@ -501,7 +501,7 @@ pub(crate) struct DdpgArgs {
     #[clap(long, default_value_t = 10)]
     pub(crate) train_episodes: usize,
 
-    #[clap(long, default_value = "/RL_metrics/training")]
+    #[clap(long, default_value = "/distribute_save/RL_metrics/training.h5")]
     pub(crate) training_output: String,
     
     #[clap(long, default_value_t = 10)]
@@ -510,13 +510,13 @@ pub(crate) struct DdpgArgs {
     #[clap(long, default_value_t = 1000)]
     pub(crate) eval_max_steps:     usize,
     
-    #[clap(long, default_value = "/RL_metrics/eval")]
+    #[clap(long, default_value = "/distribute_save/RL_metrics/evaluation.h5")]
     pub(crate) eval_output:  String,
     
-    #[clap(long, default_value_t = 5)]
+    #[clap(long, default_value_t = 1)]
     pub(crate) checkpoint_interval: usize,
     
-    #[clap(long, default_value = "/RL_metrics/checkpoint")]
+    #[clap(long, default_value = "/distribute_save/RL_metrics/checkpoint")]
     pub(crate) checkpoint_dir: String,
     
     #[clap(long, default_value_t = 42)]   
@@ -744,6 +744,13 @@ pub(crate) enum SbliMode {
 pub(crate) struct RunContainer {
     // no arguments required, the number of MPI processes
     // allowed is set based on the number required by the input file
+    #[clap(long)]
+    /// skip training and only run evaluation
+    pub(crate) eval_only: bool,
+
+    #[clap(long)]
+    /// path to checkpoint to load for evaluation
+    pub(crate) checkpoint: Option<PathBuf>,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -767,6 +774,14 @@ pub(crate) struct RunLocal {
     /// mount some python code into the container to run instead of the
     /// code contained in the solver image
     pub(crate) python_mount: Option<PathBuf>,
+    
+    #[clap(long)]
+    /// skip training and only run evaluation
+    pub(crate) eval_only: bool,
+
+    #[clap(long)]
+    /// path to checkpoint to load for evaluation
+    pub(crate) checkpoint: Option<PathBuf>,
 }
 
 #[derive(Parser, Debug, Clone, Constructor)]

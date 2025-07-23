@@ -20,7 +20,7 @@ import torch.nn.functional as F
 import time
 import inspect
 
-from ..base_agent import BaseAgent
+from streamspy.base_agent import BaseAgent
 
 #Define actor and critic NN.
 # Actor produces single action; The state is inputed, the action is out made continuous by multiplying max acion with tanh(NN output)
@@ -86,7 +86,7 @@ class ReplayBuffer(object):
 #The hyperparameters are defined, the actor & critc NN are defined as attributes and their Target NN are created
 #Lastly, the optimizer, Adam, is selected to adjust the NN weights and the MSELoss is selected for use in the backprop calc
 class agent(BaseAgent):
-    def __init__(self, state_dim, action_dim, max_action, hidden_width, buffer_size, batch_size, lr, GAMMA, TAU):
+    def __init__(self, state_dim, action_dim, max_action, hidden_width, buffer_size, batch_size, lr, GAMMA, TAU, checkpoint_dir):
         self.hidden_width = hidden_width  # The number of neurons in hidden layers of the neural network
         self.batch_size = batch_size #100  # batch size
         self.GAMMA = GAMMA # 0.99 discount factor
@@ -101,8 +101,9 @@ class agent(BaseAgent):
         
         self.replay_buffer = ReplayBuffer(state_dim, action_dim, buffer_size)
 
-        self.run_timestamp = time.strftime("%Y%m%d.%H%M%S")
-        self.run_name = self.run_timestamp
+        # self.run_timestamp = time.strftime("%Y%m%d.%H%M%S")
+        # self.run_name = self.run_timestamp
+        self.checkpoint = checkpoint_dir
 
         self.initialize_networks()
 
@@ -112,12 +113,13 @@ class agent(BaseAgent):
         self.MseLoss = nn.MSELoss()
 
     def initialize_networks(self) -> None:
-        save_dir = f"{self.run_name}/Initial_Parameters"
+        # save_dir = f"{self.run_name}/Initial_Parameters"
+        save_dir = f"{self.checkpoint}"
         Path(save_dir).mkdir(parents=True, exist_ok=True)
-        torch.save(self.actor.state_dict(), os.path.join(save_dir, "InitialActorParameters.pt"))
-        torch.save(self.actor_target.state_dict(), os.path.join(save_dir, "InitialActorTargetParameters.pt"))
-        torch.save(self.critic.state_dict(), os.path.join(save_dir, "InitialCriticParameters.pt"))
-        torch.save(self.critic_target.state_dict(), os.path.join(save_dir, "InitialCriticTargetParameters.pt"))
+        torch.save(self.actor.state_dict(), os.path.join(save_dir, "actor_initial.pt"))
+        torch.save(self.actor_target.state_dict(), os.path.join(save_dir, "actor_target_initial.pt"))
+        torch.save(self.critic.state_dict(), os.path.join(save_dir, "critic_initial.pt"))
+        torch.save(self.critic_target.state_dict(), os.path.join(save_dir, "critic_target_initial.pt"))
 
     # An action is chosen by feeding the state into the actor NN which outputs the action a
     def choose_action(self, s):
@@ -181,5 +183,7 @@ class agent(BaseAgent):
         torch.save(self.critic.state_dict(), directory / f"critic_{tag}.pt")
 
     def load_checkpoint(self, checkpoint: Path) -> None:
-        self.actor.load_state_dict(torch.load(checkpoint.with_name("actor_best.pt")))
-        self.critic.load_state_dict(torch.load(checkpoint.with_name("critic_best.pt")))
+        directory = checkpoint.parent
+        tag = checkpoint.name
+        self.actor.load_state_dict(torch.load(directory / f"actor_{tag}.pt"))
+        self.critic.load_state_dict(torch.load(directory / f"critic_{tag}.pt"))

@@ -2,10 +2,10 @@ use crate::prelude::*;
 
 use super::create_dirs;
 use super::postprocess;
-use serde_json::Value;
+/// use serde_json::Value;
 
 /// running routine for the solver once activated within the container
-pub(crate) fn run_container(_args: cli::RunContainer) -> anyhow::Result<()> {
+pub(crate) fn run_container(args: cli::RunContainer) -> anyhow::Result<()> {
     let start = std::time::Instant::now();
 
     let path = PathBuf::from("/input/input.json");
@@ -59,7 +59,13 @@ pub(crate) fn run_container(_args: cli::RunContainer) -> anyhow::Result<()> {
             static_py
         };
 
-        let exec = xshell::cmd!(sh, "mpirun -np {nproc} python3 {solver_py}/main.py");
+        let mut exec = xshell::cmd!(sh, "mpirun -np {nproc} python3 {solver_py}/main.py");
+        if args.eval_only {
+            exec = exec.arg("--eval-only");
+        }
+        if let Some(ckpt) = args.checkpoint.as_ref() {
+            exec = exec.arg("--checkpoint").arg(ckpt);
+        }
 
         println!("Now running solver, STDOUT will be hidden until it finishes");
         exec.run()?;

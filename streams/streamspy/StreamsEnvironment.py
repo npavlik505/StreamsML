@@ -279,8 +279,8 @@ class StreamsGymEnv(gymnasium.Env):
 
         # Required Gym Stats:  (obs, reward, done, info)
         obs = tau_global.astype(np.float32)
-        if self.rank == 0:
-            print(f'[StreamsEnvironment.py] STEP {self.step_count}') # produces obs of shape {obs.shape}')
+        # if self.rank == 0:
+        #     print(f'[StreamsEnvironment.py] STEP {self.step_count + 1}')
         info = {
             "time": self.current_time,
             "step": self.step_count,

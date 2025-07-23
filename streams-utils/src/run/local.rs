@@ -73,16 +73,26 @@ impl Solver {
         Ok(())
     }
 
-    fn run(&self, nproc: usize, python_mount: String) -> Result<()> {
+    fn run(&self, python_mount: String, eval_only: bool, checkpoint: Option<PathBuf>) -> Result<()> {
         let sh = Shell::new()?;
 
         let results_path = &self.dist_save;
         let input_path = &self.input;
-        let nproc = nproc.to_string();
 
-        let exec = cmd!(sh, "apptainer run --nv --bind {results_path}:/distribute_save,{input_path}:/input{python_mount} --app distribute ./streams.sif {nproc}")
+        // Use `apptainer exec` so arguments are properly forwarded to the
+        // command executed inside the container. The `run` command would drop
+        // any additional flags, causing both training and evaluation to run
+        // even when `--eval-only` was specified.
+        let mut exec = cmd!(sh, "apptainer exec --nv --bind {results_path}:/distribute_save,{input_path}:/input{python_mount} ./streams.sif /streams-utils run-container")
             // ignore the output status so we get more STDOUT information?
             .ignore_status();
+
+        if eval_only {
+            exec = exec.arg("--eval-only");
+        }
+        if let Some(ckpt) = checkpoint.as_ref() {
+            exec = exec.arg("--checkpoint").arg(ckpt);
+        }
 
         exec.run()?;
 
@@ -113,7 +123,7 @@ pub(crate) fn run_local(args: cli::RunLocal) -> Result<()> {
         "".to_string()
     };
 
-    solver.run(args.nproc, python_mount)?;
+    solver.run(python_mount, args.eval_only, args.checkpoint)?;
 
     Ok(())
 }
