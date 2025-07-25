@@ -156,26 +156,26 @@ class StreamsGymEnv(gymnasium.Env):
             try:
                 streams.wrap_finalize_solver()
                 if self.rank == 0:
-                    print('streams.wrap_finalize_solver() called')
+                    print('[StreamsEnvironment.py] streams.wrap_finalize_solver() called')
             except Exception:
                 pass
             try:
                 streams.wrap_finalize()
                 if self.rank == 0:
-                    print('streams.wrap_finalize() called')
+                    print('[StreamsEnvironment.py] streams.wrap_finalize() called')
             except Exception:
                 pass
             try:
                 streams.wrap_deallocate_all()
                 if self.rank == 0:
-                    print('streams.wrap_deallocate_all() called')
+                    print('[StreamsEnvironment.py] streams.wrap_deallocate_all() called')
             except Exception:
                 pass
             # When MPI is fully finalized we must start it again before
             # continuing with solver setup.
             streams.wrap_startmpi()
             if self.rank == 0:
-                print('streams.wrap_start_mpi() called')
+                print('[StreamsEnvironment.py] streams.wrap_start_mpi() called')
         else:
             # Standard environment reset: only tear down the solver while MPI
             # remains active.  This avoids the cost and side effects of a full
@@ -183,13 +183,13 @@ class StreamsGymEnv(gymnasium.Env):
             try:
                 streams.wrap_finalize_solver()
                 if self.rank == 0:
-                    print('streams.wrap_finalize_solver() called')
+                    print('[StreamsEnvironment.py] streams.wrap_finalize_solver() called')
             except Exception:
                 pass
             try:
                 streams.wrap_deallocate_all()
                 if self.rank == 0:
-                    print('streams.wrap_deallocate_all() called')
+                    print('[StreamsEnvironment.py] streams.wrap_deallocate_all() called')
             except Exception:
                 pass
 
@@ -291,7 +291,7 @@ class StreamsGymEnv(gymnasium.Env):
     # ------------------------------------------------------------------
     # HDF5 output helpers (called from main.py)
     # ------------------------------------------------------------------
-    def init_h5_io(self) -> None:
+    def init_h5_io(self, directory) -> None:
         """Create HDF5 files and datasets used for diagnostics."""
         import io_utils  # imported here to avoid modifying global imports
 
@@ -302,10 +302,14 @@ class StreamsGymEnv(gymnasium.Env):
         self._energy_array = np.zeros(1)
 
         # Open HDF5 files
-        self.flowfields = io_utils.IoFile("/distribute_save/flowfields.h5")
-        self.span_averages = io_utils.IoFile("/distribute_save/span_averages.h5")
-        self.trajectories = io_utils.IoFile("/distribute_save/trajectories.h5")
-        self.mesh_h5 = io_utils.IoFile("/distribute_save/mesh.h5")
+        self.flowfields = io_utils.IoFile(directory / "flowfields.h5")
+        self.span_averages = io_utils.IoFile(directory / "span_averages.h5")
+        self.trajectories = io_utils.IoFile(directory / "trajectories.h5")
+        self.mesh_h5 = io_utils.IoFile(directory / "mesh.h5")        
+        # self.flowfields = io_utils.IoFile("/distribute_save/flowfields.h5")
+        # self.span_averages = io_utils.IoFile("/distribute_save/span_averages.h5")
+        # self.trajectories = io_utils.IoFile("/distribute_save/trajectories.h5")
+        # self.mesh_h5 = io_utils.IoFile("/distribute_save/mesh.h5")
 
         grid_shape = [self.config.grid.nx, self.config.grid.ny, self.config.grid.nz,]
         span_average_shape = [self.config.grid.nx, self.config.grid.ny]
@@ -349,7 +353,7 @@ class StreamsGymEnv(gymnasium.Env):
 
         dt = float(streams.wrap_get_dtglobal())
         self.dt_dset.write_array(np.array([dt], dtype=np.float32))
-        self.amplitude_dset.write_array(np.array([jet_amplitude], dtype=np.float32))
+        self.amplitude_dset.write_array(np.array([float(jet_amplitude)], dtype=np.float32))
 
         if self.step_count % self.config.temporal.span_average_io_steps == 0:
             utils.hprint("[StreamsGymEnv] writing span average to output")
@@ -396,7 +400,7 @@ class StreamsGymEnv(gymnasium.Env):
         try:
             streams.wrap_finalize_solver()
             if self.rank == 0:
-                print('streams.wrap_finalize() called')
+                print('[StreamsEnvironment.py] streams.wrap_finalize() called')
         except Exception:
             pass
 
@@ -429,6 +433,6 @@ class StreamsGymEnv(gymnasium.Env):
         try:
             streams.wrap_finalize()
             if self.rank == 0:
-                print('streams.wrap_finalize() called')
+                print('[StreamsEnvironment.py] streams.wrap_finalize() called')
         except Exception:
             pass

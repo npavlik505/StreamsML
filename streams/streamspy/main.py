@@ -88,7 +88,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
         comm = MPI.COMM_WORLD
         rank = comm.rank
         if rank == 0:
-            print(f'[rl_control.py] TRAINING')
+            print(f'TRAINING')
         
         # print("[rl_control.py] Define objects for observation and action space")
         state_dim = env.observation_space.shape[0]
@@ -97,6 +97,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
         # print("[rl_control.py] Define reward objects")
         best_reward = -float("inf")
         episode_rewards = []
+        
         best_path = Path(env.config.jet.jet_params["checkpoint_dir"]) / "best"
         
         # open output file for training statistics on all ranks
@@ -132,7 +133,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 
         for ep in range(env.config.jet.jet_params["train_episodes"]): #, disable=rank != 0):
             if rank == 0:
-                print(f'[rl_control.py] Beginning of training episode {ep}')
+                print(f'Beginning of training episode {ep + 1}')
             if STOP:
                 break
             obs = env.reset()
@@ -168,7 +169,6 @@ elif env.config.jet.jet_method_name == "LearningBased":
                     agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), f"ep{ep + 1}") # Saves network parameters every "checkpoint_dir" number of episodes
         if rank == 0 and not STOP:
             agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), "final")
-        print("Just before h5train.close()")
         if write_training:
             comm.Barrier()
             h5train.close()
@@ -182,16 +182,20 @@ elif env.config.jet.jet_method_name == "LearningBased":
         comm = MPI.COMM_WORLD
         rank = comm.rank
         if rank == 0:
-            print(f'[rl_control.py] EVALUATION')
+            print(f'EVALUATION')
         
         agent.load_checkpoint(checkpoint)
 
         # open output file for time, amp, reward, and obs in the evaluation loop to be collected
         write_eval = env.config.jet.jet_params["eval_output"] is not None
+        h5eval = None
         if write_eval:
             # Define path, create directory and h5, gather data to allocate shape
             eval_output_path = Path(env.config.jet.jet_params["eval_output"])
-            eval_output_path.parent.mkdir(parents=True, exist_ok=True)
+            if rank == 0:
+                eval_output_path.parent.mkdir(parents=True, exist_ok=True)
+            comm.Barrier()
+            
             h5eval = io_utils.IoFile(str(eval_output_path))
             eval_episodes = env.config.jet.jet_params["eval_episodes"]
             eval_steps = env.max_episode_steps
@@ -208,35 +212,68 @@ elif env.config.jet.jet_method_name == "LearningBased":
             amp_dset = h5eval.file.create_dataset("amplitude", shape = (eval_episodes, eval_steps), dtype = "f4")
             reward_dset = h5eval.file.create_dataset("reward", shape = (eval_episodes, eval_steps), dtype = "f4")
             obs_dset = h5eval.file.create_dataset("observation", shape = (eval_episodes, eval_steps, observation_dim), dtype = "f4")
-        for ep in range(env.config.jet.jet_params["eval_episodes"]): #, disable=rank != 0):
+                
             if rank == 0:
-                print(f'[rl_control.py] Beginning of evaluation episode {ep}')
+                base_fields_dir = eval_output_path.parent.parent / "LB_EvalData"
+                if base_fields_dir.exists():
+                    shutil.rmtree(base_fields_dir)  # Remove the directory and all its contents
+                base_fields_dir.mkdir(parents=True)
+                
+            else:
+                base_fields_dir = None
+            base_fields_dir = comm.bcast(base_fields_dir, root=0)                
+                
+        else:
+            eval_output_path = None
+            base_fields_dir = None
+            
+        comm.Barrier()
+        
+        for ep in range(env.config.jet.jet_params["eval_episodes"]): #, disable=rank != 0):
+            if write_eval:
+                if rank == 0:
+                    print(f'Beginning of evaluation episode {ep + 1}')
+                    ep_dir = base_fields_dir / f"ep_{ep:04d}"
+                    ep_dir.mkdir(parents=True, exist_ok=True)
+                    ep_dir_str = str(ep_dir)
+                else:
+                    ep_dir_str = None
+                ep_dir_str = comm.bcast(ep_dir_str, root=0)
+                env.init_h5_io(Path(ep_dir_str))
+                
             obs = env.reset()
             done = False
             step = 0
             ep_reward = 0.0
+            
             while not done and step < env.config.jet.jet_params["eval_max_steps"]:
                 if rank == 0:
-                    print(f'[rl_control.py] Evaluate step = {step}')
                     action = agent.choose_action(torch.tensor(obs, dtype=torch.float32))
                 else:
                     action = None
                 action = comm.bcast(action, root=0)
                 obs, reward, done, info = env.step(action)
                 done = comm.bcast(done, root=0)
-                if rank == 0:
-                    ep_reward += reward
-                    # if write_eval and step % write_spacing == 0:
-                    time_dset[ep, step] = info["time"]
-                    amp_dset[ep, step] = action
-                    reward_dset[ep, step] = reward
-                    obs_dset[ep, step, :] = obs
+                if write_eval:
+                    env.log_step_h5(action)
+                    if rank == 0:
+                        ep_reward += reward
+                        # if write_eval and step % write_spacing == 0:
+                        time_dset[ep, step] = info["time"]
+                        amp_dset[ep, step] = action
+                        reward_dset[ep, step] = reward
+                        obs_dset[ep, step, :] = obs
                 step += 1
+            if write_eval:
+                comm.Barrier()
+                env.close_h5_io()
             if rank == 0:
                 LOGGER.info("Eval Episode %d reward %.6f", ep + 1, ep_reward)
         if write_eval:
             comm.Barrier()
-            h5eval.close()
+            if h5eval is not None:
+                h5eval.close()
+            env.close_h5_io()
 
 
 
@@ -277,8 +314,27 @@ elif env.config.jet.jet_method_name == "LearningBased":
     # initialize an algorithm based on the match method below. 
     # Pros: Simpler Rust code and edit, less redundancy, and less frequent Rust edits. 
     # Cons: Giant Rust struct and json file when scaled up, and less informative Rust errors and help function. 
+    
+    # Clear the checkpoints directory before training runs, but not evaluation runs 
+    checkpoint_dir = Path(env.config.jet.jet_params.get("checkpoint_dir"))
+    if not args.eval_only:
+        # only rank 0 should clear existing checkpoints to avoid race conditions
+        if env.rank == 0 and checkpoint_dir.exists():
+            for item in checkpoint_dir.iterdir():
+                try:
+                    if item.is_file() or item.is_symlink():
+                        item.unlink()
+                    else:
+                        shutil.rmtree(item)
+                except FileNotFoundError:
+                    # another process may have removed the file
+                    pass
+        # make sure all ranks wait for the cleanup to finish
+        env.comm.Barrier()
+    
     agent_kwargs = {
-        "checkpoint_dir": env.config.jet.jet_params.get("checkpoint_dir"),
+        # "checkpoint_dir": env.config.jet.jet_params.get("checkpoint_dir"),
+        "checkpoint_dir": str(checkpoint_dir),
         "hidden_width": env.config.jet.jet_params.get("hidden_width"),
         "buffer_size": env.config.jet.jet_params.get("buffer_size"),
         "batch_size": env.config.jet.jet_params.get("batch_size"),

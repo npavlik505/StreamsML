@@ -34,10 +34,16 @@ build:
 streams_flow_type := "boundary-layer"
 
 # build a config json file as input to the solver
+# results_dir := "$STREAMS_DIR/streamspy/output"
+# eval := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/evaluation.h5"
+# training := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/training.h5"
+# checkpoint := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/checkpoint"
+# checkpoint_tag := "best"
 results_dir := "$STREAMS_DIR/streamspy/output"
-eval := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/evaluation"
-training := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/training"
-checkpoint := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/checkpoint"
+eval := "$STREAMS_DIR/streamspy/output/LB_GymData/evaluation.h5"
+training := "$STREAMS_DIR/streamspy/output/LB_GymData/training.h5"
+checkpoint := "$STREAMS_DIR/streamspy/output/LB_GymData/checkpoints"
+checkpoint_tag := "best"
 
 # build a config json file as input to the solver
 config_output := "$STREAMS_DIR/streamspy/output/input.json"
@@ -77,7 +83,7 @@ config:
 		    --eval-episodes 2 \
 		    --eval-max-steps 6 \
 		    --eval-output {{eval}} \
-		    --checkpoint-interval 5 \
+		    --checkpoint-interval 1 \
 		    --checkpoint-dir {{checkpoint}} \
 		    --seed 42 \
 		    --amplitude 1.0 \
@@ -96,6 +102,16 @@ run:
 		--database {{database_bl}} \
 		--python-mount $STREAMS_DIR/streamspy \
 		16
+
+eval:
+        cargo r -- run-local \
+                --workdir {{results_dir}}/ \
+                --config {{config_output}} \
+                --database {{database_bl}} \
+                --python-mount $STREAMS_DIR/streamspy \
+                --eval-only \
+                --checkpoint {{checkpoint}}/{{checkpoint_tag}} \
+                16
 
 # get a shell inside the container
 # requires the ./output directory (with its associated folders) to be created, 
