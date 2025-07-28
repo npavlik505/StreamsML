@@ -29,12 +29,12 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.max_action = max_action
         self.l1 = nn.Linear(state_dim, hidden_width)
-        #self.l2 = nn.Linear(hidden_width, hidden_width)
+        self.l2 = nn.Linear(hidden_width, hidden_width)
         self.l3 = nn.Linear(hidden_width, action_dim)
 
     def forward(self, s): #Changed l1 and l2 from F.relu() to tanh
         s = torch.tanh(self.l1(s))
-        #s = torch.tanh(self.l2(s))
+        s = torch.tanh(self.l2(s))
         a = self.max_action * torch.tanh(self.l3(s))  # [-max,max]
         return a
 
@@ -175,7 +175,7 @@ class agent(BaseAgent):
             target_param.data.copy_(self.TAU * param.data + (1 - self.TAU) * target_param.data)
 
         actor_loss, critic_loss = actor_loss.item(), critic_loss.item()
-        LOGGER.debug("actor_loss=%f critic_loss=%f", actor_loss, critic_loss)
+        # LOGGER.debug("actor_loss=%f critic_loss=%f", actor_loss, critic_loss)
             
     def save_checkpoint(self, directory: Path, tag: str) -> None:
         directory.mkdir(parents=True, exist_ok=True)

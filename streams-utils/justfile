@@ -87,6 +87,7 @@ config:
 		    --checkpoint-dir {{checkpoint}} \
 		    --seed 42 \
 		    --amplitude 1.0 \
+		    --hidden-width 256 \
 		    --learning-rate 0.0003 \
 		    --gamma 0.99 \
 		    --tau 0.005 \
