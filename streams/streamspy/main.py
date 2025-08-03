@@ -15,7 +15,8 @@ if env.config.jet.jet_method_name == "OpenLoop":
 
     # Instantiate environment and prep h5 files for standard datasets
     # env = StreamsGymEnv()
-    env.init_h5_io()
+    save_dir = Path("/distribute_save")
+    env.init_h5_io(save_dir)
 
     # Main solver loop
     obs = env.reset()

@@ -158,34 +158,34 @@ class DMDcActuator(AbstractActuator):
         # only root computes the “raw” adjusted_amplitude
         if self.rank == self.root:
             if frac <= .3:
-                print(f'[DEBUG: jet_actuator.py] PRBS running {i}')
+                # print(f'[DEBUG: jet_actuator.py] PRBS running {i}')
                 raw = self.amplitude * (2*np.random.rand() - 1)
-                print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
+                # print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
             elif frac <= .6:
-                print(f'[DEBUG: jet_actuator.py] Linear-chirp sine running {i}')
+                # print(f'[DEBUG: jet_actuator.py] Linear-chirp sine running {i}')
                 dt    = (self.config.temporal.fixed_dt
                          if self.config.temporal.fixed_dt is not None
                          else streams.wrap_get_dtglobal())
                 T     = n_steps * dt
                 phase = 2 * math.pi * (time / T)**2
                 raw   = self.amplitude * math.sin(phase)
-                print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
+                # print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
             elif frac <= .7:
-                print(f'[DEBUG: jet_actuator.py] .2 amp running {i}')
+                # print(f'[DEBUG: jet_actuator.py] .2 amp running {i}')
                 raw = 0.2 * self.amplitude
-                print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
+                # print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
             elif frac <= .8:
-                print(f'[DEBUG: jet_actuator.py] .5 amp running {i}')
+                # print(f'[DEBUG: jet_actuator.py] .5 amp running {i}')
                 raw = 0.5 * self.amplitude
-                print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
+                # print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
             elif frac <= .9:
-                print(f'[DEBUG: jet_actuator.py] .8 running {i}')
+                # print(f'[DEBUG: jet_actuator.py] .8 running {i}')
                 raw = 0.8 * self.amplitude
-                print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
+                # print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
             else:
-                print(f'[DEBUG: jet_actuator.py] 100% amp running {i}')
+                # print(f'[DEBUG: jet_actuator.py] 100% amp running {i}')
                 raw = 1.0 * self.amplitude
-                print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
+                # print(f'[DEBUG: jet_actuator.py] amplitude {raw}')
         else:
             raw = None
 
