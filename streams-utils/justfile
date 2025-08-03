@@ -113,6 +113,13 @@ eval:
                 --eval-only \
                 --checkpoint {{checkpoint}}/{{checkpoint_tag}} \
                 16
+                
+analysis:
+        python3 $STREAMS_DIR/streamspy/Analysis/analysis_main.py \
+                --results_dir {{results_dir}} \
+                --analysis-tag ep0000 \
+                --analysis-method pysensors
+	
 
 # get a shell inside the container
 # requires the ./output directory (with its associated folders) to be created, 
