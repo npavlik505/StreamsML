@@ -49,8 +49,8 @@ checkpoint_tag := "best"
 config_output := "$STREAMS_DIR/streamspy/output/input.json"
 
 config:
-	rm -rf {{results_dir}}
-	mkdir {{results_dir}}
+	# rm -rf {{results_dir}}
+	# mkdir {{results_dir}}
 	echo {{config_output}}
 
 	# 600, 208, 100
@@ -113,13 +113,20 @@ eval:
                 --eval-only \
                 --checkpoint {{checkpoint}}/{{checkpoint_tag}} \
                 16
-                
+  
 analysis:
         python3 $STREAMS_DIR/streamspy/Analysis/analysis_main.py \
                 --results_dir {{results_dir}} \
-                --analysis-tag ep0000 \
-                --analysis-method pysensors
-	
+                --analysis-tag ep_0000 \
+                --analysis-method DMD \
+              
+# analysis:
+#        python3 $STREAMS_DIR/streamspy/Analysis/analysis_main.py \
+#                --results_dir {{results_dir}} \
+#                --analysis-tag ep_0000 \
+#                --analysis-method pysensors \
+#                --num-sensors 100 \
+
 
 # get a shell inside the container
 # requires the ./output directory (with its associated folders) to be created, 

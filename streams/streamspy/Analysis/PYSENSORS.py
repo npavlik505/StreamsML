@@ -1,13 +1,10 @@
 """Utilities for Sparse Sensor Placement Optimization using PySensors."""
-import numpy as np
-import argparse
-import json
-import sys
-import h5py
+
 from pathlib import Path
 
-# Script imports
-from config import Config
+import h5py
+import numpy as np
+
 
 def run_pysensors(sa_path: Path, output_dir: Path, num_sensors: int = 10) -> Path:
     """Apply PySensors SSPOR on velocity fields in ``sa_path``.
@@ -26,9 +23,13 @@ def run_pysensors(sa_path: Path, output_dir: Path, num_sensors: int = 10) -> Pat
     Path
         Path to the created ``sensors.h5`` file.
     """
+    if num_sensors <= 0:
+        raise ValueError("num_sensors must be positive")
 
     try:
-        from pysensors.optimization import approximate_sspor
+        # from pysensors.optimizers import QR
+        from pysensors import SSPOR
+        
     except Exception as exc:  # pragma: no cover - package may not be installed
         raise ImportError(
             "The `pysensors` package is required to run Sparse Sensor Placement "
@@ -44,11 +45,12 @@ def run_pysensors(sa_path: Path, output_dir: Path, num_sensors: int = 10) -> Pat
     v = sa[:, 2, :, :]
 
     num_snaps, nx, ny = u.shape
-    data = np.concatenate(
-        [u.reshape(num_snaps, -1), v.reshape(num_snaps, -1)], axis=1
-    ).T
+    data = np.concatenate([u.reshape(num_snaps, -1), v.reshape(num_snaps, -1)], axis=1)
 
-    sensor_indices, _ = approximate_sspor(data, num_sensors)
+    # https://python-sensors.readthedocs.io/en/latest/api/pysensors.reconstruction.html
+    model = SSPOR(n_sensors = num_sensors)
+    model.fit(data)
+    sensor_indices = model.selected_sensors
 
     output_dir.mkdir(parents=True, exist_ok=True)
     out_file = output_dir / "sensors.h5"
