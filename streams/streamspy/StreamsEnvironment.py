@@ -219,13 +219,17 @@ class StreamsGymEnv(gymnasium.Env):
         tau = streams.wrap_get_tauw_x(self.tauw_shape)
         self._tauw_buffer[:] = tau  # temporary tau storage
         
-        # Gather τ_w from all MPI ranks and broadcast the concatenated array
-        all_tau = self.comm.gather(self._tauw_buffer, root=0)
-        if self.rank == 0:
-            tau_global = np.concatenate(all_tau)
-        else:
-            tau_global = None
-        tau_global = self.comm.bcast(tau_global, root=0)
+        # # Gather τ_w from all MPI ranks and broadcast the concatenated array
+        # all_tau = self.comm.gather(self._tauw_buffer, root=0)
+        # if self.rank == 0:
+        #     tau_global = np.concatenate(all_tau)
+        # else:
+        #     tau_global = None
+        # tau_global = self.comm.bcast(tau_global, root=0)
+
+        # Gather τ_w from all MPI ranks
+        all_tau = self.comm.allgather(self._tauw_buffer)
+        tau_global = np.concatenate(all_tau)
 
         # Reset counters
         self.step_count = 0
@@ -263,15 +267,18 @@ class StreamsGymEnv(gymnasium.Env):
         self._tauw_buffer[:] = tau
 
         # Gather τ_w from all ranks so that the agent observes the full domain
-        all_tau = self.comm.gather(self._tauw_buffer, root=0)
-        if self.rank == 0:
-            tau_global = np.concatenate(all_tau)
-            reward = -float(np.sum(tau_global**2))  # compute reward on rank 0
-        else:
-            tau_global = None
-            reward = None
-        tau_global = self.comm.bcast(tau_global, root=0)
-        reward = self.comm.bcast(reward, root=0)
+        # all_tau = self.comm.gather(self._tauw_buffer, root=0)
+        # if self.rank == 0:
+        #     tau_global = np.concatenate(all_tau)
+        #     reward = -float(np.sum(tau_global**2))  # compute reward on rank 0
+        # else:
+        #     tau_global = None
+        #     reward = None
+        # tau_global = self.comm.bcast(tau_global, root=0)
+        # reward = self.comm.bcast(reward, root=0)
+        all_tau = self.comm.allgather(self._tauw_buffer)
+        tau_global = np.concatenate(all_tau)
+        reward = -float(np.sum(tau_global**2))
 
         # Termination: After `max_episode_steps` steps, done=True
         self.step_count += 1

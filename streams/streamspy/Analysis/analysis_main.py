@@ -22,12 +22,12 @@ if __name__ == "__main__":
     def main() -> None:
         parser = argparse.ArgumentParser(description="Run analysis on StreamsML output")
         parser.add_argument("--results_dir", type=Path, required=True, help="Path to output directory")
-        parser.add_argument("--analysis-tag", default="", help="Episode tag used for learning based runs")
+        parser.add_argument("--episode-tag", default="", help="Episode tag used for learning based runs")
         parser.add_argument("--analysis-method", default="POD", help="Analysis method to apply")
         parser.add_argument("--num-sensors", type=int, default=10, help="Number of sensors to select")
         args = parser.parse_args()
         
-        input_dir = Path( args.results_dir , "input" , "input.json" )
+        input_dir = Path( args.results_dir , "input.json" )
         # with open("args.results_dir/input/input.json", "r") as f:
         with open(input_dir, "r") as f:
             cfg_json = json.load(f)
@@ -41,9 +41,10 @@ if __name__ == "__main__":
             sys.exit(0)
             
         else:
-            analysis_path = args.results_dir / "LB_EvalData" / args.analysis_tag
+            analysis_path = args.results_dir / "LB_EvalData" / args.episode_tag
 
         sa_path = analysis_path / "span_averages.h5"
+        print(sa_path)
         output_dir = args.results_dir / "analysis_results"
 
         method = args.analysis_method.lower()

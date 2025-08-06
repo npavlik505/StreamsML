@@ -47,6 +47,7 @@ subroutine step_solver()
     implicit none
 
   icyc = icyc+1
+  itav = icyc
 !
   call rk() ! Third-order RK scheme
  ! write the probe dtata before any reset occurs

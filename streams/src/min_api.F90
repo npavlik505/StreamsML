@@ -77,26 +77,24 @@ subroutine wrap_tauw_calculate() bind(C, name="wrap_tauw_calculate")
     use iso_c_binding
     !f2py intent(c) wrap_tauw_calculate
     !f2py intent(hide)
-    use mod_streams, only: tauw_x, w_av, mykind, y, nx, ny, ncoords, masterproc
+    use mod_streams, only: tauw_x, w_avzg, mykind, y, nx, ny, ncoords
     implicit none
     integer :: i, j
-    real(mykind), dimension(nx, ny) :: ufav, vfav, wfav
+    real(mykind), dimension(nx, ny) :: ufav
     real(mykind) :: dudyw, dy, rmuw, tauw
 
-    call stats2d()
+    call compute_av()
     if (ncoords(3) == 0) then
         do j = 1, ny
             do i = 1, nx
-                ufav(i, j) = w_av(13, i, j)/w_av(1, i, j)
-                vfav(i, j) = w_av(14, i, j)/w_av(1, i, j)
-                wfav(i, j) = w_av(15, i, j)/w_av(1, i, j)
+                ufav(i, j) = w_avzg(13, i, j)/w_avzg(1, i, j)
             end do
         end do
         do i = 1, nx
             dudyw = (-22._mykind*ufav(i, 1) + 36._mykind*ufav(i, 2) - 18._mykind*ufav(i, 3) + 4._mykind*ufav(i, 4))/12._mykind
             dy = (-22._mykind*y(1) + 36._mykind*y(2) - 18._mykind*y(3) + 4._mykind*y(4))/12._mykind
             dudyw = dudyw/dy
-            rmuw = w_av(20, i, 1)
+            rmuw = w_avzg(20, i, 1)
             tauw = rmuw*dudyw
             tauw_x(i) = tauw
         end do
