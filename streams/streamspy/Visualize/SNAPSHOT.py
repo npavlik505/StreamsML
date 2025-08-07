@@ -5,6 +5,7 @@ import os
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 
 VARIABLE_MAP = {"rho": 0, "u": 1, "v": 2, "w": 3, "E": 4}
 
@@ -32,11 +33,11 @@ def run_snapshot(sa_path: Path, output_dir: Path, variable: str, snapshot: int) 
 
     with h5py.File(sa_path, "r") as sa:
         data = sa["span_average"]
-        if snapshot < 0 or snapshot >= data.shape[0]:
-            raise ValueError(
-                f"Snapshot index out of range. Must be between 0 and {data.shape[0] - 1}."
-            )
-        field = data[snapshot, VARIABLE_MAP[variable], :, :]
+        frames = data[:, VARIABLE_MAP[variable], :, :]
+        if snapshot < 0 or snapshot >= frames.shape[0]:
+            raise ValueError(f"Snapshot index out of range. Must be between 0 and {frames.shape[0] - 1}.")
+        field = frames[snapshot]
+        colorbarmax = float(np.nanmax(frames))
 
     mesh_path = sa_path.parent / "mesh.h5"
     with h5py.File(mesh_path, "r") as mesh:
@@ -44,8 +45,10 @@ def run_snapshot(sa_path: Path, output_dir: Path, variable: str, snapshot: int) 
         y = mesh["y_grid"][0, :]
         X, Y = np.meshgrid(x, y)
 
+    norm = mpl.colors.Normalize(vmin = 0.0, vmax = colorbarmax)
+    levels = np.linspace(0.0, colorbarmax, 40)
     fig, ax = plt.subplots()
-    cf = ax.contourf(X, Y, field.T, levels=40, cmap="viridis")
+    cf = ax.contourf(X, Y, field.T, levels=levels, cmap="viridis", norm=norm, extend = 'max')
     ax.set_aspect("equal")
     fig.colorbar(cf, ax=ax)
 
