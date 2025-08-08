@@ -101,6 +101,26 @@ subroutine wrap_tauw_calculate() bind(C, name="wrap_tauw_calculate")
     end if
 end subroutine wrap_tauw_calculate
 
+subroutine wrap_uoverslot_collect() bind(C, name="wrap_uoverslot_collect")
+    use iso_c_binding
+    !f2py intent(c) wrap_uoverslot_collect
+    !f2py intent(hide)
+    use mod_streams, only: slot_end_x_global, w_avzg, mykind, ny, ncoords, nx, uoverslot
+    implicit none
+    integer :: i, j, global_x
+    call compute_av()
+    do j = 1, ny
+        do i = 1, nx
+            global_x = ncoords(1)*nx + i
+            if (global_x <= slot_end_x_global) then
+                uoverslot(i, j) = w_avzg(13, i, j) / w_avzg(1, i, j)
+            else
+                uoverslot(i, j) = 0._mykind
+            end if
+        end do
+    end do
+end subroutine wrap_uoverslot_collect
+
 subroutine wrap_dissipation_calculation() bind(C, name="wrap_dissipation_calculation")
     use iso_c_binding
     !f2py intent(c) wrap_dissipation_calculation

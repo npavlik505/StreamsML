@@ -127,20 +127,27 @@ analysis:
 #                --analysis-method pysensors \
 #                --num-sensors 100 \
                 
-visualize:
-        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
-                --results_dir {{results_dir}} \
-                --episode-tag ep_0000 \
-                --vis-type animation \
-                --snapshot-number 99 \
-                --variable u \
+#visualize:
+#        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
+#                --results_dir {{results_dir}} \
+#                --episode-tag ep_0000 \
+#                --vis-type snapshot \
+#                --snapshot-number 10 \
+#                --variable u \
                 
 #visualize:
 #        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
 #                --results_dir {{results_dir}} \
 #                --episode-tag ep_0000 \
 #                --vis-type animation \
-#                --variable {{variable}}
+#                --variable u \
+
+visualize:
+        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
+                --results_dir {{results_dir}} \
+                --episode-tag ep_0000 \
+                --vis-type rl_metrics
+
 
 # get a shell inside the container
 # requires the ./output directory (with its associated folders) to be created, 

@@ -81,6 +81,23 @@ class ReplayBuffer(object):
         batch_s_ = torch.clone(self.s_[index]) 
 
         return batch_s, batch_a, batch_r, batch_s_
+        
+class OUNoise:
+    """Ornstein-Uhlenbeck (OU) method of adding noise for exploration."""
+    def __init__(self, action_dim, mu=0.0, theta=0.15, sigma=0.2):
+        self.mu = mu
+        self.theta = theta
+        self.sigma = sigma
+        self.action_dim = action_dim
+        self.reset()
+
+    def reset(self):
+        self.state = np.ones(self.action_dim) * self.mu
+
+    def sample(self):
+        dx = self.theta * (self.mu - self.state) + self.sigma * np.random.randn(self.action_dim)
+        self.state = self.state + dx
+        return self.state
 
 #This the policy gradient algorithm, notice this uses the actor and critic classes made earlier
 #The hyperparameters are defined, the actor & critc NN are defined as attributes and their Target NN are created
@@ -100,6 +117,7 @@ class agent(BaseAgent):
         self.critic_target = copy.deepcopy(self.critic)
         
         self.replay_buffer = ReplayBuffer(state_dim, action_dim, buffer_size)
+        self.ou_noise = OUNoise(action_dim)
 
         # self.run_timestamp = time.strftime("%Y%m%d.%H%M%S")
         # self.run_name = self.run_timestamp
@@ -122,10 +140,14 @@ class agent(BaseAgent):
         torch.save(self.critic_target.state_dict(), os.path.join(save_dir, "critic_target_initial.pt"))
 
     # An action is chosen by feeding the state into the actor NN which outputs the action a
-    def choose_action(self, s):
+    def choose_action(self, s, step, add_noise: bool = True):
         s = torch.unsqueeze(torch.clone(s), 0)
         a = self.actor(s).data.numpy().flatten()
-        return a
+        if add_noise:
+            if step == 0:
+                self.ou_noise.reset()
+            a = a + self.ou_noise.sample()
+        return np.clip(a, -self.actor.max_action, self.actor.max_action)
 
     def learn(self, obs, action, reward, next_obs):
         self.replay_buffer.store(

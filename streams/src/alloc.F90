@@ -215,6 +215,8 @@ subroutine allocate_vars()
  allocate(wrecycav_gpu(ng,ny,nv))
 
  allocate(tauw_x(1:nx))
+ 
+ allocate(uoverslot(nx, ny))
 
  allocate(fdm_y_stencil_gpu(5, ny))
  allocate(fdm_y_stencil(5, ny))

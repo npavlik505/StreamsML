@@ -144,7 +144,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
             while not done:
                 if rank == 0:
                     obs_t = torch.tensor(obs, dtype=torch.float32)
-                    action = agent.choose_action(obs_t)
+                    action = agent.choose_action(obs_t, step)
                 else:
                     action = None
                 action = comm.bcast(action, root=0)

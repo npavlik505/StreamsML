@@ -1,5 +1,3 @@
-# streams_gym_env.py
-
 # Gym and standard imports
 import os
 import sys
@@ -13,21 +11,23 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
-# script, mpi, and globals imports 
 import libstreams as streams # f2py‐wrapped STREAmS library
 
+# ------------------------------------------------------------------
+# Transforming STREAmS into a Gym Environment (initialization, restart, step)
+# ------------------------------------------------------------------
 # Gym Environment: Initialization
 class StreamsGymEnv(gymnasium.Env):
     """
-    OpenAI Gym environment wrapping the STREAmS solver via f2py.
-
-    Observation: the 1D wall‐shear‐stress array τw(x) (length = config.grid.nx)
+    # Observation: the 1D wall‐shear‐stress array τw(x) (length = config.grid.nx)
+    Observation: 2D span-averaged U velocity from start from x[0, slot_end], y[0, ny]
     Action:      a single "jet amplitude" scalar ∈ [ -max_amplitude, +max_amplitude ]
 
     Reward:      Negative squared‐L2 norm of τw(x)  (i.e. agent tries to minimize shear stress)
+                 τw(x) is the 1D wall‐shear‐stress array (length = config.grid.nx)
     Done:        When `self.step_count >= self.max_episode_steps`.
 
-    To use:
+    General use (see main.py loops):
         env = StreamsGymEnv(config_path="/input/input.json", max_amplitude=1.0, max_episode_steps=200)
         obs = env.reset()
         for _ in range(max_episode_steps):
@@ -46,19 +46,18 @@ class StreamsGymEnv(gymnasium.Env):
         rc.initialize = False
         from mpi4py import MPI  # solver MPI must be started (wrap_startmpi()) before mpi4py library import
         import globals # contains rank/comm initialization
-        globals.init() # 
+        globals.init() 
         self.rank = globals.rank
         self.comm = globals.comm
         import io_utils # for HDF5
         from config import Config # input.json to Config object
         import utils # helper code; calculate_span_averages, etc.
         import jet_actuator # all actuator code
-        self.jet_actuator = jet_actuator # bind to self so that it may be used in step method 
+        self.jet_actuator = jet_actuator # bind to self so that it can be used in step method
 
         # Parse, and later access the entries of, input.json using config
         with open("/input/input.json", "r") as f:
             cfg_json = json.load(f)
-            # print(f'cfg_json: {json.dumps(cfg_json, indent = 2)}')
             self.config = Config.from_json(cfg_json)
 
         # Allocate Arrays
@@ -76,6 +75,7 @@ class StreamsGymEnv(gymnasium.Env):
         # ``tauw_shape`` is the number of wall points owned by this MPI rank.
         # The global observation is assembled by gathering data from all ranks in `reset` and `step`.
         self.tauw_shape = streams.wrap_get_tauw_x_shape()
+        self.uoverslot_shape = streams.wrap_get_uoverslot_shape()
         w1, w2, w3, w4  = streams.wrap_get_w_shape() # conservative vector (rho, rho-u, rho-v, rho-w, E)
         self.w_shape   = (w1, w2, w3, w4)
         
@@ -103,13 +103,34 @@ class StreamsGymEnv(gymnasium.Env):
         self.actuator = jet_actuator.init_actuator(self.rank, self.config)
 
         if self.config.jet.jet_method_name == "LearningBased":
+            #
+            # BEGIN DEVELOPER SECTION: DEFINE YOUR OBSERVATION SPACE
+            #
             # Observation Space (Determine what resonable bounds are)
-            # Observation = τw(x) ∈ R^{nx}.  We bound it loosely between [-100, +100] per point.
-            high_obs = np.full((self.nx,), 100.0, dtype=np.float32)
+            
+            # # Observation = τw(x) ∈ R^{nx}.  We bound it loosely between [-100, +100] per point.
+            # high_obs = np.full((self.nx,), 100.0, dtype=np.float32)
+            # self.observation_space = spaces.Box(low=-high_obs,
+            #                                     high=+high_obs,
+            #                                     shape=(self.nx,),
+            #                                     dtype=np.float32)
+
+            # Observation = Span-averaged 2D array of U velocity values over slot
+            x_obs, y_obs = streams.wrap_get_uoverslot_shape()
+            obs_flat = x_obs * y_obs
+            high_obs = np.full((obs_flat,), 2100.0, dtype=np.float32)
             self.observation_space = spaces.Box(low=-high_obs,
                                                 high=+high_obs,
-                                                shape=(self.nx,),
+                                                shape=(obs_flat,),
                                                 dtype=np.float32)
+            
+            n1, n2 = streams.wrap_get_uoverslot_shape()
+            arr = wrap_uoverslot_collect()
+            wrap_get_uoverslot(arr, n1, n2)
+            
+            #
+            # END DEVELOPER SECTION: DEFINE YOUR OBSERVATION SPACE
+            #
 
             # Action Space (Bounds determined from input.json, extracted upon actuator initialization above)
             # Action = single continuous amplitude ∈ [ -max_amplitude, +max_amplitude ]
@@ -126,6 +147,7 @@ class StreamsGymEnv(gymnasium.Env):
 
         # Tau storage, overwritten each step
         self._tauw_buffer = np.zeros((self.tauw_shape,), dtype=np.float64)
+        self._UoverSlot_buffer = np.zeros((self.uoverslot_shape,), dtype=np.float64)
 
         if self.rank == 0:
             print(f'[StreamsEnvironment.py] gym environment initialized')
@@ -134,7 +156,6 @@ class StreamsGymEnv(gymnasium.Env):
             print(f'current_time: {self.current_time}')
 
     # setup_solver definition: initialized solver on first call, closes solver and reinits on subsequent calls
-    # def _setup_solver(self):
     def _setup_solver(self, *, restart_mpi: bool = False) -> None:
         """(Re)initialize the STREAmS solver.
 
@@ -213,20 +234,33 @@ class StreamsGymEnv(gymnasium.Env):
         self._setup_solver() # End previous solver and rebuild it
         self.actuator = self.jet_actuator.init_actuator(self.rank, self.config) # Re‐build actuator
 
+
+        #
+        # BEGIN DEVELOPER SECTION: RETURN YOUR INITIAL OBSERVATION
+        #
         # Immediately compute tau on the new solver (no time steps taken yet)
         streams.wrap_copy_gpu_to_cpu() # bring everything from GPU to CPU
         streams.wrap_tauw_calculate() # ask Fortran to compute τau(x) on the CPU
-        tau = streams.wrap_get_tauw_x(self.tauw_shape)
-        self._tauw_buffer[:] = tau  # temporary tau storage
+        # tau = streams.wrap_get_tauw_x(self.tauw_shape)
+        # self._tauw_buffer[:] = tau  # temporary tau storage
         
-        # # Gather τ_w from all MPI ranks and broadcast the concatenated array
-        # all_tau = self.comm.gather(self._tauw_buffer, root=0)
-        # if self.rank == 0:
-        #     tau_global = np.concatenate(all_tau)
-        # else:
-        #     tau_global = None
-        # tau_global = self.comm.bcast(tau_global, root=0)
+        # # Gather τ_w from all MPI ranks
+        # all_tau = self.comm.allgather(self._tauw_buffer)
+        # tau_global = np.concatenate(all_tau)
 
+        # # Reset counters
+        # self.step_count = 0
+        # self.current_time = 0.0
+
+        # # Gym expects a float32 array
+        # return tau_global.astype(np.float32)
+
+        n1, n2 = streams.wrap_get_uoverslot_shape(self.UoverSlot_shape)
+        arr = wrap_uoverslot_collect()
+        UoverSlot = streams.wrap_get_uoverslot(arr, n1, n2)
+
+        self._UoverSlot_buffer[:] = UoverSlot  # temporary tau storage
+        
         # Gather τ_w from all MPI ranks
         all_tau = self.comm.allgather(self._tauw_buffer)
         tau_global = np.concatenate(all_tau)
@@ -236,7 +270,14 @@ class StreamsGymEnv(gymnasium.Env):
         self.current_time = 0.0
 
         # Gym expects a float32 array
-        return tau_global.astype(np.float32)
+        return tau_global.astype(np.float32)  
+        
+            n1, n2 = streams.wrap_get_uoverslot_shape()
+            arr = wrap_uoverslot_collect()
+            wrap_get_uoverslot(arr, n1, n2)
+        #
+        # END DEVELOPER SECTION: RETURN YOUR INITIAL OBSERVATION
+        #
 
     # Gym Environment: Step
     def step(self, action):
@@ -260,22 +301,14 @@ class StreamsGymEnv(gymnasium.Env):
         dt = float(streams.wrap_get_dtglobal())
         self.current_time += dt
 
-        # copy gpu to cpu and calculate tau
+        #
+        # BEGIN DEVELOPER SECTION: COLLECT YOUR OBSERVATION FROM STREAmS, DEFINE YOUR REWARD
+        #
         streams.wrap_copy_gpu_to_cpu()
         streams.wrap_tauw_calculate()
         tau = streams.wrap_get_tauw_x(self.tauw_shape)  # local portion of τ_w
         self._tauw_buffer[:] = tau
 
-        # Gather τ_w from all ranks so that the agent observes the full domain
-        # all_tau = self.comm.gather(self._tauw_buffer, root=0)
-        # if self.rank == 0:
-        #     tau_global = np.concatenate(all_tau)
-        #     reward = -float(np.sum(tau_global**2))  # compute reward on rank 0
-        # else:
-        #     tau_global = None
-        #     reward = None
-        # tau_global = self.comm.bcast(tau_global, root=0)
-        # reward = self.comm.bcast(reward, root=0)
         all_tau = self.comm.allgather(self._tauw_buffer)
         tau_global = np.concatenate(all_tau)
         reward = -float(np.sum(tau_global**2))
@@ -286,8 +319,11 @@ class StreamsGymEnv(gymnasium.Env):
 
         # Required Gym Stats:  (obs, reward, done, info)
         obs = tau_global.astype(np.float32)
-        # if self.rank == 0:
-        #     print(f'[StreamsEnvironment.py] STEP {self.step_count + 1}')
+        
+        #
+        # END DEVELOPER SECTION: COLLECT YOUR OBSERVATION FROM STREAmS, DEFINE YOUR REWARD
+        #
+        
         info = {
             "time": self.current_time,
             "step": self.step_count,
@@ -313,10 +349,6 @@ class StreamsGymEnv(gymnasium.Env):
         self.span_averages = io_utils.IoFile(directory / "span_averages.h5")
         self.trajectories = io_utils.IoFile(directory / "trajectories.h5")
         self.mesh_h5 = io_utils.IoFile(directory / "mesh.h5")        
-        # self.flowfields = io_utils.IoFile("/distribute_save/flowfields.h5")
-        # self.span_averages = io_utils.IoFile("/distribute_save/span_averages.h5")
-        # self.trajectories = io_utils.IoFile("/distribute_save/trajectories.h5")
-        # self.mesh_h5 = io_utils.IoFile("/distribute_save/mesh.h5")
 
         grid_shape = [self.config.grid.nx, self.config.grid.ny, self.config.grid.nz,]
         span_average_shape = [self.config.grid.nx, self.config.grid.ny]
@@ -415,7 +447,7 @@ class StreamsGymEnv(gymnasium.Env):
             if self.rank == 0:
                 print('closing h5 files')
 
-            # Close datasets before calling MPI_Finalize to avoid HDF5 error when the MPI driver is used.
+            # Close datasets before calling MPI_Finalize to avoid HDF5 error when MPI is used.
             for ds in [
                 getattr(self, name)
                 for name in [

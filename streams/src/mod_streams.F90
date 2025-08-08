@@ -73,6 +73,10 @@ module mod_streams
  !f2py real*8, dimension(:), allocatable :: tauw_x
  real(mykind), dimension(:), allocatable :: tauw_x
  
+ ! span-averaged streamwise velocity up to the end of the slot
+ !f2py real*8, dimension(:, :), allocatable :: uoverslot
+ real(mykind), dimension(:, :), allocatable :: uoverslot
+ 
  ! the number of solver steps between outputting probe information / span average information
  integer :: save_probe_steps, save_span_average_steps
 
