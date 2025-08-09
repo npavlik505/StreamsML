@@ -75,7 +75,28 @@ class StreamsGymEnv(gymnasium.Env):
         # ``tauw_shape`` is the number of wall points owned by this MPI rank.
         # The global observation is assembled by gathering data from all ranks in `reset` and `step`.
         self.tauw_shape = streams.wrap_get_tauw_x_shape()
-        self.uoverslot_shape = streams.wrap_get_uoverslot_shape()
+        # Shape of the span‑averaged streamwise velocity over the slot.
+        # ``wrap_get_uoverslot_shape`` returns the local slice owned by this
+        # MPI rank.  The global observation is assembled via ``allgather`` in
+        # :meth:`reset` and :meth:`step`.
+        u1, u2 = streams.wrap_get_uoverslot_shape()
+        self.uoverslot_shape = (u1, u2)
+        # Some MPI ranks may not intersect the slot and thus own zero cells.
+        # Record whether this rank actually holds data for the span-averaged
+        # velocity.  Accessing Fortran arrays with a zero extent would trigger
+        # runtime errors, so we skip such calls and later gather empty arrays
+        # from those ranks.
+        self._has_uoverslot = (u1 > 0 and u2 > 0)
+        
+        # ``wrap_get_uoverslot_shape`` returns the local dimensions of the
+        # span‑averaged velocity array owned by this MPI rank.  The global
+        # observation is built by gathering the local slices from all ranks in
+        # :meth:`reset` and :meth:`step`.  Compute the total size of the global
+        # observation by summing the local sizes across all ranks.
+        local_obs_size = u1 * u2
+        global_obs_size = self.comm.allreduce(local_obs_size)
+        self._global_obs_size = global_obs_size
+        
         w1, w2, w3, w4  = streams.wrap_get_w_shape() # conservative vector (rho, rho-u, rho-v, rho-w, E)
         self.w_shape   = (w1, w2, w3, w4)
         
@@ -115,18 +136,14 @@ class StreamsGymEnv(gymnasium.Env):
             #                                     shape=(self.nx,),
             #                                     dtype=np.float32)
 
-            # Observation = Span-averaged 2D array of U velocity values over slot
-            x_obs, y_obs = streams.wrap_get_uoverslot_shape()
-            obs_flat = x_obs * y_obs
-            high_obs = np.full((obs_flat,), 2100.0, dtype=np.float32)
-            self.observation_space = spaces.Box(low=-high_obs,
+            # Observation = Flattened span-averaged U velocity over the slot.
+            global_obs_size = self._global_obs_size
+            high_obs = np.full((global_obs_size,), 2100.0, dtype=np.float32)
+            self.observation_space = spaces.Box(
+                                                low=-high_obs,
                                                 high=+high_obs,
-                                                shape=(obs_flat,),
+                                                shape=(global_obs_size,),
                                                 dtype=np.float32)
-            
-            n1, n2 = streams.wrap_get_uoverslot_shape()
-            arr = wrap_uoverslot_collect()
-            wrap_get_uoverslot(arr, n1, n2)
             
             #
             # END DEVELOPER SECTION: DEFINE YOUR OBSERVATION SPACE
@@ -145,15 +162,33 @@ class StreamsGymEnv(gymnasium.Env):
         self.max_episode_steps = int(self.config.temporal.num_iter)
         self.current_time = 0.0
 
-        # Tau storage, overwritten each step
-        self._tauw_buffer = np.zeros((self.tauw_shape,), dtype=np.float64)
-        self._UoverSlot_buffer = np.zeros((self.uoverslot_shape,), dtype=np.float64)
-
         if self.rank == 0:
             print(f'[StreamsEnvironment.py] gym environment initialized')
             print(f'Step_count: {self.step_count}')
             print(f'max_episode_steps (--steps in justfile): {self.max_episode_steps}')
             print(f'current_time: {self.current_time}')
+
+    def _gather_nonempty(self, arr: np.ndarray) -> np.ndarray:
+        """Gather 1D data from all ranks while skipping empty contributions.
+
+        Parameters
+        ----------
+        arr : np.ndarray
+            Local array which may have zero length on ranks that do not own a
+            portion of the domain for a particular observation.
+
+        Returns
+        -------
+        np.ndarray
+            Concatenated global array containing only the non-empty slices from
+            each MPI rank.
+        """
+
+        gathered = self.comm.allgather(np.asarray(arr))
+        non_empty = [np.ravel(a) for a in gathered if a.size > 0]
+        if non_empty:
+            return np.concatenate(non_empty)
+        return np.empty(0, dtype=arr.dtype)
 
     # setup_solver definition: initialized solver on first call, closes solver and reinits on subsequent calls
     def _setup_solver(self, *, restart_mpi: bool = False) -> None:
@@ -223,8 +258,9 @@ class StreamsGymEnv(gymnasium.Env):
     # Gym Environment: Restart
     def reset(self, *, seed=None, options=None):
         """
-        Re‐initializes the STREAmS solver to a 'cold start' (no previous steps taken),
-        then returns the initial τw(x) as the observation.
+        Re‐initializes the STREAmS solver to a 'cold start' (no previous steps
+        taken), then returns the initial span‑averaged streamwise velocity over
+        the slot as the observation.
         """
         if self.rank == 0:
             print('[StreamsEnvironment.py] PYTHON RESET() METHOD CALLED')
@@ -239,8 +275,8 @@ class StreamsGymEnv(gymnasium.Env):
         # BEGIN DEVELOPER SECTION: RETURN YOUR INITIAL OBSERVATION
         #
         # Immediately compute tau on the new solver (no time steps taken yet)
-        streams.wrap_copy_gpu_to_cpu() # bring everything from GPU to CPU
-        streams.wrap_tauw_calculate() # ask Fortran to compute τau(x) on the CPU
+        # streams.wrap_copy_gpu_to_cpu() # bring everything from GPU to CPU
+        # streams.wrap_tauw_calculate() # ask Fortran to compute τau(x) on the CPU
         # tau = streams.wrap_get_tauw_x(self.tauw_shape)
         # self._tauw_buffer[:] = tau  # temporary tau storage
         
@@ -254,27 +290,26 @@ class StreamsGymEnv(gymnasium.Env):
 
         # # Gym expects a float32 array
         # return tau_global.astype(np.float32)
-
-        n1, n2 = streams.wrap_get_uoverslot_shape(self.UoverSlot_shape)
-        arr = wrap_uoverslot_collect()
-        UoverSlot = streams.wrap_get_uoverslot(arr, n1, n2)
-
-        self._UoverSlot_buffer[:] = UoverSlot  # temporary tau storage
         
-        # Gather τ_w from all MPI ranks
-        all_tau = self.comm.allgather(self._tauw_buffer)
-        tau_global = np.concatenate(all_tau)
+        # Immediately compute the span‑averaged velocity on the new solver
+        # (no time steps taken yet)
+        streams.wrap_copy_gpu_to_cpu()  # bring everything from GPU to CPU
+        streams.wrap_uoverslot_collect()
+        if self._has_uoverslot:
+            local_u = streams.wrap_get_uoverslot(*self.uoverslot_shape)
+        else:
+            local_u = np.empty((0,), dtype=np.float32)
+
+        # Gather U values from all MPI ranks and flatten, ignoring empty slices
+        u_global = self._gather_nonempty(local_u)
 
         # Reset counters
         self.step_count = 0
         self.current_time = 0.0
 
         # Gym expects a float32 array
-        return tau_global.astype(np.float32)  
-        
-            n1, n2 = streams.wrap_get_uoverslot_shape()
-            arr = wrap_uoverslot_collect()
-            wrap_get_uoverslot(arr, n1, n2)
+        # return tau_global.astype(np.float32) 
+        return u_global.astype(np.float32)
         #
         # END DEVELOPER SECTION: RETURN YOUR INITIAL OBSERVATION
         #
@@ -283,7 +318,9 @@ class StreamsGymEnv(gymnasium.Env):
     def step(self, action):
         """
         Given `action` = np.ndarray of shape (1,), pass it to the JetActuator,
-        advance the solver one time step, recompute tau, and return (obs, reward, done, info).
+        advance the solver one time step, recompute tau for the reward, and
+        return (observation, reward, done, info) where the observation is the
+        flattened span‑averaged streamwise velocity over the slot.
         """
         # apply action (assign the amplitude calculated by RL to amp)
         amp = float(np.asarray(action).reshape(-1)[0])
@@ -306,19 +343,30 @@ class StreamsGymEnv(gymnasium.Env):
         #
         streams.wrap_copy_gpu_to_cpu()
         streams.wrap_tauw_calculate()
-        tau = streams.wrap_get_tauw_x(self.tauw_shape)  # local portion of τ_w
-        self._tauw_buffer[:] = tau
+        streams.wrap_uoverslot_collect()
 
-        all_tau = self.comm.allgather(self._tauw_buffer)
-        tau_global = np.concatenate(all_tau)
+        # Reward based on wall shear stress
+        if self.tauw_shape > 0:
+            tau = streams.wrap_get_tauw_x(self.tauw_shape)
+        else:
+            tau = np.empty((0,), dtype=np.float64)
+        tau_global = self._gather_nonempty(tau)
         reward = -float(np.sum(tau_global**2))
+
+        # Observation: span‑averaged U over slot
+        if self._has_uoverslot:
+            local_u = streams.wrap_get_uoverslot(*self.uoverslot_shape)
+        else:
+            local_u = np.empty((0,), dtype=np.float32)
+        u_global = self._gather_nonempty(local_u)
 
         # Termination: After `max_episode_steps` steps, done=True
         self.step_count += 1
         done = (self.step_count >= self.max_episode_steps)
 
         # Required Gym Stats:  (obs, reward, done, info)
-        obs = tau_global.astype(np.float32)
+        # obs = tau_global.astype(np.float32)
+        obs = u_global.astype(np.float32)
         
         #
         # END DEVELOPER SECTION: COLLECT YOUR OBSERVATION FROM STREAmS, DEFINE YOUR REWARD
