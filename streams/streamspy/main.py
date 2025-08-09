@@ -112,23 +112,27 @@ elif env.config.jet.jet_method_name == "LearningBased":
         # open output file for time, amp, reward, and obs in the training loop to be collected
         write_training = env.config.jet.jet_params["training_output"] is not None
         h5train = time_dset = amp_dset = reward_dset = obs_dset = None
+        print("Just before write_training")
         if write_training:
             if rank == 0:
                 # Define path, create directory and h5, gather data to allocate shape
                 training_output_path = Path(env.config.jet.jet_params["training_output"])
                 training_output_path.parent.mkdir(parents=True, exist_ok=True)
-                h5train = io_utils.IoFile(str(training_output_path))
+                print("Just after training_output_path.parent.mkdir")
+                # h5train = io_utils.IoFile(str(training_output_path))
+                h5train = io_utils.IoFile(str(training_output_path), comm=None)
+                print("Just after h5train")
                 training_episodes = env.config.jet.jet_params["train_episodes"]
                 training_steps = env.max_episode_steps
                 observation_dim = env.observation_space.shape[0]
-
+                print("Just before h5 file creation")
                 # Create datasets within the h5 file
                 time_dset = h5train.file.create_dataset("time", shape=(training_episodes, training_steps), dtype="f4")
                 amp_dset = h5train.file.create_dataset("amplitude", shape=(training_episodes, training_steps), dtype="f4")
                 reward_dset = h5train.file.create_dataset("reward", shape=(training_episodes, training_steps), dtype="f4")
-                obs_dset = h5train.file.create_dataset(
-                    "observation", shape=(training_episodes, training_steps, observation_dim), dtype="f4"
-                )
+                print("Just after reward h5 file creation")
+                obs_dset = h5train.file.create_dataset("observation", shape=(training_episodes, training_steps, observation_dim), dtype="f4", chunks=(1, 100, observation_dim))
+                print("Just after obs h5 file creation")
             else:
                 training_output_path = None
             comm.Barrier()

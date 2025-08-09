@@ -23,15 +23,32 @@ class Group():
 # for a numpy array of shape = (3, nx, ny, nz), with num_proc number of mpi processesses,
 # this class will write a giant array to disk in a 6 dimensional array in the shape of 
 # (num_writes, 3, nx, ny, nz)
+# class IoFile:
+#     # params
+#     # filename: the path to the .h5 file that you wish to write to
+#     # num_writes: the total number of times that you will call `write_array`
+#     def __init__(self, filename: str):
+#         comm = MPI.COMM_WORLD
+#         self.rank = comm.rank
+# 
+#         self.file = h5py.File(filename, 'w', driver='mpio', comm = MPI.COMM_WORLD)
 class IoFile:
-    # params
-    # filename: the path to the .h5 file that you wish to write to
-    # num_writes: the total number of times that you will call `write_array`
-    def __init__(self, filename: str):
-        comm = MPI.COMM_WORLD
-        self.rank = comm.rank
+    """
+    IoFile(filename, mode='w', comm=None)
 
-        self.file = h5py.File(filename, 'w', driver='mpio', comm = MPI.COMM_WORLD)
+    - If comm is None  -> open SERIAL HDF5 (no 'mpio' driver), using libver='latest'
+    - If comm is MPI communicator -> open PARALLEL HDF5 with driver='mpio' on that communicator.
+      (Opening with mpio is collective; all ranks on 'comm' must participate.)
+    """
+    def __init__(self, filename: str, mode: str = 'w', comm=None, libver: Optional[str] = 'latest'):
+        self.rank = 0
+        if comm is None:
+            # Serial HDF5 open. Using modern file format helps reduce metadata overhead.
+            self.file = h5py.File(filename, mode, libver=libver)
+        else:
+            # Parallel HDF5 open. This is collective across 'comm'.
+            self.rank = comm.Get_rank() if hasattr(comm, "Get_rank") else MPI.COMM_WORLD.Get_rank()
+            self.file = h5py.File(filename, mode, driver='mpio', comm=comm)
 
     def create_group(self, name: str) -> Group:
         group = self.file.create_group(name)
