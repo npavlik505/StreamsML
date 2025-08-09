@@ -6,6 +6,7 @@ import math
 import numpy as np
 import gymnasium
 from gymnasium import spaces
+from pathlib import Path
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 if PROJECT_ROOT not in sys.path:
@@ -393,10 +394,16 @@ class StreamsGymEnv(gymnasium.Env):
         self._energy_array = np.zeros(1)
 
         # Open HDF5 files
-        self.flowfields = io_utils.IoFile(directory / "flowfields.h5")
-        self.span_averages = io_utils.IoFile(directory / "span_averages.h5")
-        self.trajectories = io_utils.IoFile(directory / "trajectories.h5")
-        self.mesh_h5 = io_utils.IoFile(directory / "mesh.h5")        
+        # self.flowfields = io_utils.IoFile(directory / "flowfields.h5")
+        # self.span_averages = io_utils.IoFile(directory / "span_averages.h5")
+        # self.trajectories = io_utils.IoFile(directory / "trajectories.h5")
+        # self.mesh_h5 = io_utils.IoFile(directory / "mesh.h5")
+        
+        # May have to add conditional if eval loop can't be parallelized
+        self.flowfields = io_utils.IoFile(Path(directory) / "flowfields.h5", comm=self.comm)
+        self.span_averages = io_utils.IoFile(Path(directory) / "span_averages.h5", comm=self.comm)
+        self.trajectories = io_utils.IoFile(Path(directory) / "trajectories.h5", comm=self.comm)
+        self.mesh_h5 = io_utils.IoFile(Path(directory) / "mesh.h5", comm=self.comm)  
 
         grid_shape = [self.config.grid.nx, self.config.grid.ny, self.config.grid.nz,]
         span_average_shape = [self.config.grid.nx, self.config.grid.ny]

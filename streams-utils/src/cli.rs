@@ -502,7 +502,7 @@ pub(crate) struct DdpgArgs {
     pub(crate) train_episodes: usize,
 
     #[clap(long, default_value = "/distribute_save/RL_metrics/training.h5")]
-    pub(crate) training_output: String,
+    pub(crate) training_output: Option<String>,
     
     #[clap(long, default_value_t = 10)]
     pub(crate) eval_episodes:      usize,
@@ -557,7 +557,7 @@ pub(crate) struct DqnArgs {
     pub(crate) train_episodes: usize,
 
     #[clap(long, default_value = "/RL_metrics/training")]
-    pub(crate) training_output: String,
+    pub(crate) training_output: Option<String>,
     
     #[clap(long, default_value_t = 10)]
     pub(crate) eval_episodes:      usize,
@@ -618,7 +618,7 @@ pub(crate) struct PpoArgs {
     pub(crate) train_episodes: usize,
 
     #[clap(long, default_value = "/RL_metrics/training")]
-    pub(crate) training_output: String,
+    pub(crate) training_output: Option<String>,
     
     #[clap(long, default_value_t = 10)]
     pub(crate) eval_episodes:      usize,
