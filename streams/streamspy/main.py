@@ -111,26 +111,27 @@ elif env.config.jet.jet_method_name == "LearningBased":
         
         # open output file for time, amp, reward, and obs in the training loop to be collected
         write_training = env.config.jet.jet_params["training_output"] is not None
+        h5train = time_dset = amp_dset = reward_dset = obs_dset = None
         if write_training:
-            # Define path, create directory and h5, gather data to allocate shape
-            training_output_path = Path(env.config.jet.jet_params["training_output"])
-            training_output_path.parent.mkdir(parents=True, exist_ok=True)
-            h5train = io_utils.IoFile(str(training_output_path))
-            training_episodes = env.config.jet.jet_params["train_episodes"]
-            training_steps = env.max_episode_steps
-            observation_dim = env.observation_space.shape[0]
-            
-            # Define frequency of collection (clunky... revisit)
-            # if training_steps/10 >= 1:
-            #     write_spacing = training_steps // 10
-            # else:
-            #     write_spacing = 1
-            
-            # Create datasets within the h5 file
-            time_dset = h5train.file.create_dataset("time", shape = (training_episodes, training_steps), dtype = "f4")
-            amp_dset = h5train.file.create_dataset("amplitude", shape = (training_episodes, training_steps), dtype = "f4")
-            reward_dset = h5train.file.create_dataset("reward", shape = (training_episodes, training_steps), dtype = "f4")
-            obs_dset = h5train.file.create_dataset("observation", shape = (training_episodes, training_steps, observation_dim), dtype = "f4")
+            if rank == 0:
+                # Define path, create directory and h5, gather data to allocate shape
+                training_output_path = Path(env.config.jet.jet_params["training_output"])
+                training_output_path.parent.mkdir(parents=True, exist_ok=True)
+                h5train = io_utils.IoFile(str(training_output_path))
+                training_episodes = env.config.jet.jet_params["train_episodes"]
+                training_steps = env.max_episode_steps
+                observation_dim = env.observation_space.shape[0]
+
+                # Create datasets within the h5 file
+                time_dset = h5train.file.create_dataset("time", shape=(training_episodes, training_steps), dtype="f4")
+                amp_dset = h5train.file.create_dataset("amplitude", shape=(training_episodes, training_steps), dtype="f4")
+                reward_dset = h5train.file.create_dataset("reward", shape=(training_episodes, training_steps), dtype="f4")
+                obs_dset = h5train.file.create_dataset(
+                    "observation", shape=(training_episodes, training_steps, observation_dim), dtype="f4"
+                )
+            else:
+                training_output_path = None
+            comm.Barrier()
                 
         for ep in range(env.config.jet.jet_params["train_episodes"]): #, disable=rank != 0):
             if rank == 0:
@@ -172,7 +173,8 @@ elif env.config.jet.jet_method_name == "LearningBased":
             agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), "final")
         if write_training:
             comm.Barrier()
-            h5train.close()
+            if rank == 0 and h5train is not None:
+                h5train.close()
         # ep_dset.close()
         # h5.close()
         
@@ -187,42 +189,36 @@ elif env.config.jet.jet_method_name == "LearningBased":
         
         agent.load_checkpoint(checkpoint)
 
+        if rank == 0:
+            agent.load_checkpoint(checkpoint)
+
         # open output file for time, amp, reward, and obs in the evaluation loop to be collected
         write_eval = env.config.jet.jet_params["eval_output"] is not None
-        h5eval = None
+        h5eval = time_dset = amp_dset = reward_dset = obs_dset = None
         if write_eval:
-            # Define path, create directory and h5, gather data to allocate shape
             eval_output_path = Path(env.config.jet.jet_params["eval_output"])
             if rank == 0:
                 eval_output_path.parent.mkdir(parents=True, exist_ok=True)
-            comm.Barrier()
+                h5eval = io_utils.IoFile(str(eval_output_path))
+                eval_episodes = env.config.jet.jet_params["eval_episodes"]
+                eval_steps = env.max_episode_steps
+                observation_dim = env.observation_space.shape[0]
+
+                time_dset = h5eval.file.create_dataset("time", shape=(eval_episodes, eval_steps), dtype="f4")
+                amp_dset = h5eval.file.create_dataset("amplitude", shape=(eval_episodes, eval_steps), dtype="f4")
+                reward_dset = h5eval.file.create_dataset("reward", shape=(eval_episodes, eval_steps), dtype="f4")
+                obs_dset = h5eval.file.create_dataset(
+                    "observation", shape=(eval_episodes, eval_steps, observation_dim), dtype="f4"
+                )            
             
-            h5eval = io_utils.IoFile(str(eval_output_path))
-            eval_episodes = env.config.jet.jet_params["eval_episodes"]
-            eval_steps = env.max_episode_steps
-            observation_dim = env.observation_space.shape[0]
-            
-            # Define frequency of collection
-            # if eval_steps/10 >= 1:
-            #     write_spacing = eval_steps // 10
-            # else:
-            #     write_spacing = 1
-            
-            # Create datasets within the h5 file
-            time_dset = h5eval.file.create_dataset("time", shape = (eval_episodes, eval_steps), dtype = "f4")
-            amp_dset = h5eval.file.create_dataset("amplitude", shape = (eval_episodes, eval_steps), dtype = "f4")
-            reward_dset = h5eval.file.create_dataset("reward", shape = (eval_episodes, eval_steps), dtype = "f4")
-            obs_dset = h5eval.file.create_dataset("observation", shape = (eval_episodes, eval_steps, observation_dim), dtype = "f4")
-                
-            if rank == 0:
                 base_fields_dir = eval_output_path.parent.parent / "LB_EvalData"
                 if base_fields_dir.exists():
                     shutil.rmtree(base_fields_dir)  # Remove the directory and all its contents
                 base_fields_dir.mkdir(parents=True)
-                
             else:
                 base_fields_dir = None
-            base_fields_dir = comm.bcast(base_fields_dir, root=0)                
+            base_fields_dir = comm.bcast(base_fields_dir, root=0)
+            comm.Barrier()              
                 
         else:
             eval_output_path = None
@@ -272,7 +268,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 LOGGER.info("Eval Episode %d reward %.6f", ep + 1, ep_reward)
         if write_eval:
             comm.Barrier()
-            if h5eval is not None:
+            if rank == 0 and h5eval is not None:
                 h5eval.close()
             env.close_h5_io()
 
@@ -352,7 +348,13 @@ elif env.config.jet.jet_method_name == "LearningBased":
     sig = inspect.signature(agent_class.__init__)
     filtered = {k: v for k, v in agent_kwargs.items() if k in sig.parameters}
 
-    agent = agent_class(state_dim, action_dim, max_action, **filtered)
+    comm = env.comm
+    rank = env.rank
+
+    if rank == 0:
+        agent = agent_class(state_dim, action_dim, max_action, **filtered)
+    else:
+        agent = None
 
     if args.eval_only:
         ckpt = args.checkpoint if args.checkpoint is not None else Path(env.config.jet.jet_params["checkpoint_dir"]) / "best"
