@@ -1,3 +1,5 @@
+# TODO: Does not yet account for non-uniform grid and compressible flow. Reference POD code.  
+
 """Dynamic Mode Decomposition utilities."""
 
 from pathlib import Path

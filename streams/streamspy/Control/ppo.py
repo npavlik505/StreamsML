@@ -81,7 +81,7 @@ class agent(BaseAgent):
         Path(save_dir).mkdir(parents=True, exist_ok=True)
         torch.save(self.policy.state_dict(), os.path.join(save_dir, "policy_initial.pt"))
 
-    def choose_action(self, s: torch.Tensor):
+    def choose_action(self, s: torch.Tensor, step):
         state = torch.unsqueeze(torch.clone(s), 0)
         with torch.no_grad():
             mean, _ = self.policy(state)

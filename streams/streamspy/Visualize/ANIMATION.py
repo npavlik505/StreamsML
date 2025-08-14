@@ -12,7 +12,7 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 VARIABLE_MAP = {"rho": 0, "u": 1, "v": 2, "w": 3, "E": 4}
 
 
-def run_animation(sa_path: Path, output_dir: Path, variable: str) -> None:
+def run_animation(sa_path: Path, output_dir: Path, variable: str, domain: tuple[float, float]) -> None:
     """Create an animation for ``variable`` across all snapshots."""
 
     variable = variable.strip()
@@ -30,6 +30,12 @@ def run_animation(sa_path: Path, output_dir: Path, variable: str) -> None:
     with h5py.File(mesh_path, "r") as mesh:
         x = mesh["x_grid"][0, :]
         y = mesh["y_grid"][0, :]
+        lx, ly = domain
+        x_end = np.searchsorted(x, lx, side="right")
+        y_end = np.searchsorted(y, ly, side="right")
+        x = x[:x_end]
+        y = y[:y_end]
+        frames = frames[:, :x_end, :y_end]
         X, Y = np.meshgrid(x, y)
 
     norm = mpl.colors.Normalize(vmin = 0.0, vmax = colorbarmax)
@@ -38,17 +44,16 @@ def run_animation(sa_path: Path, output_dir: Path, variable: str) -> None:
 
     cf = ax.contourf(X, Y, frames[0].T, levels=levels, cmap="viridis", norm=norm, extend='max')
     ax.set_aspect("equal")
-    cbar = fig.colorbar(cf, ax=ax)
+    cbar = fig.colorbar(cf, ax=ax, shrink=0.4, fraction=0.1)
 
     def update(i):
-        nonlocal cf 
-        for coll in cf.collections:
-            coll.remove()
-        # redraw with same norm/levels
-        cf = ax.contourf(X, Y, frames[i].T, levels=levels, cmap="viridis", norm=norm, extend='max')
-        # keep colorbar scale fixed, just relink to new mappable
-        cbar.update_normal(cf)
-        return cf.collections
+        nonlocal cf
+        cf.remove()                                       
+        cf = ax.contourf(X, Y, frames[i].T,               
+                         levels=levels, cmap="viridis", norm=norm, extend='max')
+        cbar.update_normal(cf)                             
+        return [cf]                                       
+
 
     ani = FuncAnimation(fig, update, frames=range(frames.shape[0]), blit=False)
     os.makedirs(output_dir, exist_ok=True)

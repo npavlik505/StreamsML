@@ -132,8 +132,8 @@ analysis:
 #                --results_dir {{results_dir}} \
 #                --episode-tag ep_0000 \
 #                --vis-type snapshot \
-#                --snapshot-number 10 \
-#                --variable u \
+#                --snapshot-number 99 \
+#                --variable w \
                 
 #visualize:
 #        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
@@ -142,13 +142,25 @@ analysis:
 #                --vis-type animation \
 #                --variable u \
 
+#visualize:
+#        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
+#                --results_dir {{results_dir}} \
+#                --episode-tag ep_0000 \
+#                --vis-type rl_metrics
+
 visualize:
         python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
                 --results_dir {{results_dir}} \
                 --episode-tag ep_0000 \
-                --vis-type rl_metrics
+                --vis-type sa_data \
 
-
+model:
+	python3 $STREAMS_DIR/streamspy/Modeling/modeling_main.py \
+		--results_dir {{results_dir}} \
+		--episode-tag ep_0000 \
+		--model-type dmdc	
+	
+	
 # get a shell inside the container
 # requires the ./output directory (with its associated folders) to be created, 
 # and a ./streams.sif file to be made

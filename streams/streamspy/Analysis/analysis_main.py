@@ -43,13 +43,13 @@ if __name__ == "__main__":
         else:
             analysis_path = args.results_dir / "LB_EvalData" / args.episode_tag
 
+        dxdy_path = args.results_dir / "distribute_save"
         sa_path = analysis_path / "span_averages.h5"
-        print(sa_path)
         output_dir = args.results_dir / "analysis_results"
 
         method = args.analysis_method.lower()
         if method == "pod":
-            run_pod(sa_path, output_dir)
+            run_pod(sa_path, dxdy_path, output_dir)
         elif method == "dmd":
             run_dmd(sa_path, output_dir)
         elif method == "pysensors":

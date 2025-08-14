@@ -15,6 +15,7 @@ from config import Config
 from SNAPSHOT import run_snapshot
 from ANIMATION import run_animation
 from RL_METRICS import run_rlmetrics
+from SA_DATA import run_sadata
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run visualization on StreamsML output")
@@ -49,11 +50,15 @@ def main() -> None:
     print(f'{method} being generated')
    
     if method == "snapshot":
-        run_snapshot(sa_path, output_dir, args.variable, args.snapshot_number)
+        domain = (config.length.lx, config.length.ly)
+        run_snapshot(sa_path, output_dir, args.variable, args.snapshot_number, domain)
     elif method == "animation":
-        run_animation(sa_path, output_dir, args.variable)
+        domain = (config.length.lx, config.length.ly)
+        run_animation(sa_path, output_dir, args.variable, domain)
+    elif method == "sa_data":
+        run_sadata(sa_path, output_dir) 
     elif method == "rl_metrics":
-        run_rlmetrics(rl_metrics_path, output_dir)        
+        run_rlmetrics(rl_metrics_path, output_dir)
     else:
         print(f"Unknown visualization type: {args.vis_type}")
 

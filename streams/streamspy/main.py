@@ -188,12 +188,9 @@ elif env.config.jet.jet_method_name == "LearningBased":
         """Run evaluation episodes using checkpoint."""
         comm = MPI.COMM_WORLD
         rank = comm.rank
-        if rank == 0:
-            print(f'EVALUATION')
-        
-        agent.load_checkpoint(checkpoint)
 
         if rank == 0:
+            print(f'EVALUATION')
             agent.load_checkpoint(checkpoint)
 
         # open output file for time, amp, reward, and obs in the evaluation loop to be collected

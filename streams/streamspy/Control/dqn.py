@@ -89,7 +89,7 @@ class agent(BaseAgent):
         torch.save(self.q.state_dict(), os.path.join(save_dir, "q_initial.pt"))
         torch.save(self.q_target.state_dict(), os.path.join(save_dir, "targetq_initial.pt"))
 
-    def choose_action(self, s):
+    def choose_action(self, s, step):
         if np.random.rand() < self.epsilon:
             action_index = np.random.randint(len(self.discretized_action_dim))
         else:
