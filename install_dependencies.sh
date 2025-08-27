@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-# Install system packages using apt
+# Install system packages using apt (linux) or brew (mac)
 if command -v apt-get >/dev/null 2>&1; then
   sudo apt-get update -y
   sudo apt-get install -y \
@@ -16,29 +16,33 @@ if command -v apt-get >/dev/null 2>&1; then
     build-essential \
     libopenmpi-dev \
     cargo
+elif command -v brew >/dev/null 2>&1; then
+  brew update
+  brew install \
+    curl \
+    openssl \
+    pkg-config \
+    git \
+    python \
+    hdf5 \
+    open-mpi \
+    rust \
+    just
 else
-  echo "apt-get not found. Please install required packages manually." >&2
-  exit 1
+  echo "No supported package manager found (apt-get or brew).\n" \
+       "Install required system packages manually." >&2
 fi
 
+# Create and activate a virtual environment
+python3 -m venv streamsenv
+source streamsenv/bin/activate
+
 # Upgrade pip and install python dependencies
-pip3 install --upgrade pip
-pip3 install mpi4py h5py numpy
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r ./streams-utils/requirements.txt
 
 # Install just using cargo
 if ! command -v just >/dev/null 2>&1; then
   cargo install just
 fi
 
-# Set environment variables for streams repositories
-STREAMS_DIR_PATH="$(pwd)/streams"
-STREAMS_UTILS_DIR_PATH="$(pwd)/streams-utils"
-
-if [ -d "$STREAMS_DIR_PATH" ] && ! grep -q "STREAMS_DIR" ~/.bashrc; then
-  echo "export STREAMS_DIR=\"$STREAMS_DIR_PATH\"" >> ~/.bashrc
-fi
-if [ -d "$STREAMS_UTILS_DIR_PATH" ] && ! grep -q "STREAMS_UTILS_DIR" ~/.bashrc; then
-  echo "export STREAMS_UTILS_DIR=\"$STREAMS_UTILS_DIR_PATH\"" >> ~/.bashrc
-fi
-
-echo "Dependencies installed. Restart your shell to load environment variables."
