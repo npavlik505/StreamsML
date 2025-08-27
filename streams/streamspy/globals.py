@@ -1,3 +1,6 @@
+from mpi4py import rc
+rc.initialize = False
+rc.finalize = False
 from mpi4py import MPI
 
 def init():

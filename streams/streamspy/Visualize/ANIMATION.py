@@ -24,6 +24,7 @@ def run_animation(sa_path: Path, output_dir: Path, variable: str, domain: tuple[
     with h5py.File(sa_path, "r") as sa:
         data = sa["span_average"]
         frames = data[:, VARIABLE_MAP[variable], :, :]
+        colorbarmin = float(np.nanmin(frames))
         colorbarmax = float(np.nanmax(frames))
 
     mesh_path = sa_path.parent / "mesh.h5"
@@ -38,8 +39,8 @@ def run_animation(sa_path: Path, output_dir: Path, variable: str, domain: tuple[
         frames = frames[:, :x_end, :y_end]
         X, Y = np.meshgrid(x, y)
 
-    norm = mpl.colors.Normalize(vmin = 0.0, vmax = colorbarmax)
-    levels = np.linspace(0.0, colorbarmax, 40)  
+    norm = mpl.colors.Normalize(vmin = colorbarmin, vmax = colorbarmax)
+    levels = np.linspace(colorbarmin, colorbarmax, 40)  
     fig, ax = plt.subplots()
 
     cf = ax.contourf(X, Y, frames[0].T, levels=levels, cmap="viridis", norm=norm, extend='max')

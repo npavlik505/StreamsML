@@ -1,5 +1,11 @@
 database_bl := "$STREAMS_DIR/examples/supersonic_sbli/database_bl.dat"
 
+help recipe_or_flag='':
+    python streams-utils/tools/recipe_help.py {{recipe_or_flag}}
+
+setup:
+    python3 -m venv streamsenv
+    . streamsenv/bin/activate && python -m pip install -U pip setuptools wheel && pip install -r requirements.txt
 
 nv:
 	mkdir -p $APPTAINER_TMPDIR
@@ -49,15 +55,13 @@ checkpoint_tag := "best"
 config_output := "$STREAMS_DIR/streamspy/output/input.json"
 
 config:
-	# rm -rf {{results_dir}}
-	# mkdir {{results_dir}}
 	echo {{config_output}}
 
 	# 600, 208, 100
-		    
+
 	cargo r -- \
 		config-generator {{config_output}} {{streams_flow_type}} \
-		--steps 30000 \
+		--steps 25 \
 		--reynolds-number 250 \
 		--mach-number 2.28 \
 		--x-divisions 600 \
@@ -71,27 +75,14 @@ config:
 		--mpi-x-split 4 \
 		--span-average-io-steps 10 \
 		--probe-io-steps 0 \
-		--python-flowfield-steps 500 \
+		--python-flowfield-steps 0 \
 		--use-python \
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
-		learning-based ddpg \
+		open-loop dmdc \
 		    --slot-start 100 \
 		    --slot-end 149 \
-		    --train-episodes 1 \
-		    --training-output {{training}} \
-		    --eval-episodes 1 \
-		    --eval-max-steps 30000 \
-		    --eval-output {{eval}} \
-		    --checkpoint-interval 1 \
-		    --checkpoint-dir {{checkpoint}} \
-		    --seed 42 \
 		    --amplitude 1.0 \
-		    --hidden-width 256 \
-		    --learning-rate 0.0003 \
-		    --gamma 0.99 \
-		    --tau 0.005 \
-		    --buffer-size 100000
 
 	cat {{config_output}}
 	
@@ -114,33 +105,33 @@ eval:
                 --checkpoint {{checkpoint}}/{{checkpoint_tag}} \
                 16
 
-analysis:
-        python3 $STREAMS_DIR/streamspy/Analysis/analysis_main.py \
-                --results_dir {{results_dir}} \
-                --episode-tag ep_0000 \
-                --analysis-method POD \
-
-# analysis:
+#analysis:
 #        python3 $STREAMS_DIR/streamspy/Analysis/analysis_main.py \
 #                --results_dir {{results_dir}} \
 #                --episode-tag ep_0000 \
-#                --analysis-method pysensors \
-#                --num-sensors 100 \
+#                --analysis-method DMD \
+
+analysis:
+         python3 $STREAMS_DIR/streamspy/Analysis/analysis_main.py \
+                 --results_dir {{results_dir}} \
+                 --episode-tag ep_0000 \
+                 --analysis-method pysensors \
+                 --num-sensors 6 \
                 
 #visualize:
 #        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
-#                --results_dir {{results_dir}} \
-#                --episode-tag ep_0000 \
-#                --vis-type snapshot \
-#                --snapshot-number 99 \
-#                --variable w \
+#                 --results_dir {{results_dir}} \
+#                 --episode-tag ep_0000 \
+#                 --vis-type snapshot \
+#                 --snapshot-number 99 \
+#                 --variable w \
                 
 #visualize:
-#        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
-#                --results_dir {{results_dir}} \
-#                --episode-tag ep_0000 \
-#                --vis-type animation \
-#                --variable u \
+#         python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
+#                 --results_dir {{results_dir}} \
+#                 --episode-tag ep_0000 \
+#                 --vis-type animation \
+#                 --variable w \
 
 #visualize:
 #        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
@@ -158,7 +149,8 @@ model:
 	python3 $STREAMS_DIR/streamspy/Modeling/modeling_main.py \
 		--results_dir {{results_dir}} \
 		--episode-tag ep_0000 \
-		--model-type dmdc	
+		--model-type dmdc \
+		--energy 100 \
 	
 	
 # get a shell inside the container

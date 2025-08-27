@@ -27,7 +27,7 @@ def load_h5_data(span_avg_file: Path, traj_file: Path, output_dir: Path, velocit
         dt_full = f["dt"][:]
         
     m_sa = data.shape[0]
-    sa_int = len(u_full) // m_sa if m_sa else 1
+    sa_int = max(len(u_full) // m_sa, 1) if m_sa else 1
     
     snapshots0 = data[0, velocity_components, :, :]
     np.save(output_dir / "init_orig_state.npy", snapshots0)
@@ -35,11 +35,13 @@ def load_h5_data(span_avg_file: Path, traj_file: Path, output_dir: Path, velocit
     snapshots = data[:, velocity_components, :, :]
     snapshots_flat = snapshots.reshape(m_sa, -1).T
 
-    u_sub = u_full[::sa_int]
-    dt_sub = dt_full[::sa_int]
+    # Subsample the control history to align with available snapshots
+    u_sub = u_full[::sa_int][:m_sa]
+    dt_sub = dt_full[::sa_int][:m_sa]
     u = u_sub[:-1][np.newaxis, :]
-    snapshots_flat = snapshots_flat[:, :u.shape[1] + 1]
-
+    # Ensure snapshots and control inputs have consistent lengths
+    snapshots_flat = snapshots_flat[:, : u.shape[1] + 1]
+    
     np.save(output_dir / "U.npy", u)
     np.save(output_dir / "dt.npy", dt_sub[0])
     return snapshots_flat, u, dt_sub[0]
@@ -176,12 +178,24 @@ def H2_Hinf_Analysis(rom_dir: Path):
 # High-level routine
 # ---------------------------------------------------------------------------
 
-def run_dmdc(sa_path: Path, traj_path: Path, output_dir: Path) -> Path:
+def _energy_rank(X: np.ndarray, energy_pct: float) -> int:
+    """Return the reduced order based on requested energy percentage."""
+    if not (0 < energy_pct <= 100.0):
+        raise ValueError("energy_pct must be in the interval (0, 100].")
+    _, s, _ = np.linalg.svd(X, full_matrices=False)
+    cumulative = np.cumsum(s ** 2)
+    total = cumulative[-1]
+    energy_ratio = cumulative / total
+    rank = int(np.searchsorted(energy_ratio, energy_pct / 100.0) + 1)
+    return rank
+
+def run_dmdc(sa_path: Path, traj_path: Path, output_dir: Path, energy_pct: float) -> Path:
     """Compute a DMDc ROM from solver output and write results to ``output_dir``."""
     output_dir.mkdir(parents=True, exist_ok=True)
     snapshots_flat, U, dt = load_h5_data(sa_path, traj_path, output_dir)
 
-    dmdc = DMDc(svd_rank=0)
+    rank = _energy_rank(snapshots_flat[:, :-1], energy_pct)
+    dmdc = DMDc(svd_rank=rank)
     dmdc.fit(snapshots_flat, U)
     
     # A = dmdc.A
@@ -194,11 +208,12 @@ def run_dmdc(sa_path: Path, traj_path: Path, output_dir: Path) -> Path:
         else np.linalg.pinv(basis) @ dmdc.B
     )
 
+    label = f"{int(energy_pct)}pct"
     red_dir = output_dir / "ReducedModels"
     red_dir.mkdir(exist_ok=True)
-    np.save(red_dir / "A_red_matrix_99pct.npy", A)
-    np.save(red_dir / "B_red_matrix_99pct.npy", B)
-    np.save(red_dir / "DMDcBasis_99pct.npy", basis)
+    np.save(red_dir / f"A_red_matrix_{label}.npy", A)
+    np.save(red_dir / f"B_red_matrix_{label}.npy", B)
+    np.save(red_dir / f"DMDcBasis_{label}.npy", basis)
 
     x0 = init_snapshot_red(basis, output_dir)
     rom_file = output_dir / "dmdc_span_averages.h5"

@@ -5,6 +5,7 @@
 import h5py
 from mpi4py import rc
 rc.initialize = False
+rc.finalize = False
 from mpi4py import MPI
 import numpy as np
 from typing import Tuple, Optional, List, Any

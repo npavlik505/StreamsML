@@ -19,6 +19,7 @@ def main() -> None:
     parser.add_argument("--results_dir", type=Path, required=True, help="Path to output directory")
     parser.add_argument("--episode-tag", default="", help="Episode tag used for learning based runs")
     parser.add_argument("--model-type", default="dmdc", help="Modeling method to apply")
+    parser.add_argument("--energy", type=float, default=100.0, help="Percent of snapshot energy to retain in the ROM (0-100]")
     args = parser.parse_args()
 
     input_dir = Path(args.results_dir, "input.json")
@@ -41,7 +42,7 @@ def main() -> None:
 
     method = args.model_type.lower()
     if method == "dmdc":
-        run_dmdc(sa_path, traj_path, output_dir)
+        run_dmdc(sa_path, traj_path, output_dir, args.energy)
     else:
         print(f"Unknown model type: {args.model_type}")
         

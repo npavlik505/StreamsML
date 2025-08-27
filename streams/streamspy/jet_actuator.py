@@ -7,6 +7,7 @@ import utils
 import math
 from mpi4py import rc
 rc.initialize = False
+rc.finalize = False
 from mpi4py import MPI
 
 # the equation of the polynomial for the jet actuation in coordinates local to the jet

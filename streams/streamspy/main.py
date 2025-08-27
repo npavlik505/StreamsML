@@ -49,6 +49,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
     # from tqdm import trange (progress bar, could be a nice touch eventually)
     from mpi4py import rc
     rc.initialize = False
+    rc.finalize = False
     from mpi4py import MPI
 
     # Script imports

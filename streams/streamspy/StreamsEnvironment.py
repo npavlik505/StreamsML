@@ -45,9 +45,10 @@ class StreamsGymEnv(gymnasium.Env):
         streams.wrap_startmpi()
         from mpi4py import rc
         rc.initialize = False
+        rc.finalize = False
         from mpi4py import MPI  # solver MPI must be started (wrap_startmpi()) before mpi4py library import
         import globals # contains rank/comm initialization
-        globals.init() 
+        globals.init()
         self.rank = globals.rank
         self.comm = globals.comm
         import io_utils # for HDF5
@@ -108,7 +109,7 @@ class StreamsGymEnv(gymnasium.Env):
         span_average_shape = [self.config.grid.nx, self.config.grid.ny]
 
         # 3D flowfield files
-        if not (self.config.temporal.full_flowfield_io_steps is None):
+        if self.config.temporal.full_flowfield_io_steps not in (None, 0):
             flowfield_writes = int(math.ceil(self.config.temporal.num_iter / self.config.temporal.full_flowfield_io_steps))
         else:
             flowfield_writes = 0
@@ -409,7 +410,7 @@ class StreamsGymEnv(gymnasium.Env):
         span_average_shape = [self.config.grid.nx, self.config.grid.ny]
 
         # 3D flowfield files
-        if self.config.temporal.full_flowfield_io_steps is not None:
+        if self.config.temporal.full_flowfield_io_steps not in (0, None):
             flowfield_writes = int(math.ceil(self.config.temporal.num_iter / self.config.temporal.full_flowfield_io_steps))
         else:
             flowfield_writes = 0
@@ -465,7 +466,7 @@ class StreamsGymEnv(gymnasium.Env):
             self._energy_array[0] = streams.wrap_get_energy()
             self.energy_dset.write_array(self._energy_array)
 
-        if (self.config.temporal.full_flowfield_io_steps is not None and self.step_count % self.config.temporal.full_flowfield_io_steps == 0):
+        if (self.config.temporal.full_flowfield_io_steps not in (None, 0) and self.step_count % self.config.temporal.full_flowfield_io_steps == 0):
             utils.hprint("[StreamsGymEnv] writing flowfield")
             streams.wrap_copy_gpu_to_cpu()
             self.velocity_dset.write_array(self.config.slice_flowfield_array(streams.wrap_get_w(*self.w_shape)))
