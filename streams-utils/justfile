@@ -1,11 +1,7 @@
 database_bl := "$STREAMS_DIR/examples/supersonic_sbli/database_bl.dat"
 
 help recipe_or_flag='':
-    python streams-utils/tools/recipe_help.py {{recipe_or_flag}}
-
-setup:
-    python3 -m venv streamsenv
-    . streamsenv/bin/activate && python -m pip install -U pip setuptools wheel && pip install -r requirements.txt
+    python recipes/recipe_help.py {{recipe_or_flag}}
 
 nv:
 	mkdir -p $APPTAINER_TMPDIR
@@ -40,11 +36,6 @@ build:
 streams_flow_type := "boundary-layer"
 
 # build a config json file as input to the solver
-# results_dir := "$STREAMS_DIR/streamspy/output"
-# eval := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/evaluation.h5"
-# training := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/training.h5"
-# checkpoint := "$STREAMS_DIR/streamspy/output/distribute_save/RL_metrics/checkpoint"
-# checkpoint_tag := "best"
 results_dir := "$STREAMS_DIR/streamspy/output"
 eval := "$STREAMS_DIR/streamspy/output/LB_GymData/evaluation.h5"
 training := "$STREAMS_DIR/streamspy/output/LB_GymData/training.h5"

@@ -1,0 +1,398 @@
+# Help information for Streams utils just recipes.
+# Each recipe entry provides a summary and groups of flags that must appear together.
+# When adding new recipes, follow this structure.
+
+recipes:
+  setup:
+    summary: Set up Python virtual environment and install requirements.
+    flag_groups: []
+
+  nv:
+    summary: Build NVIDIA HPC base image.
+    flag_groups: []
+
+  base:
+    summary: Build base container using apptainer.
+    flag_groups: []
+
+  build:
+    summary: Build streams container image.
+    flag_groups: []
+
+  config:
+    summary: Generate a solver configuration file.
+    flag_groups:
+      - name: config components
+        description: "sim_params plus OpenLoop, Classical, or LearningBased params"
+        flags:
+          - name: sim_params
+            description: "Include in every run regardless of control method. Contains simulation parameters. See just help 'show sim_params' for details."
+          - name: OpenLoop
+            description: "Included in open loop actuation runs, such as constant, sinusoidal or dmdc. Contains control method parameters. See just help 'show OpenLoop' for details."
+          - name: Classical
+            description: "Included in closed-loop, classical actuation runs, such as opposition control. Contains control method parameters. See just help 'show Classical' for details."
+          - name: LearningBased
+            description: "Included in closes-loop learning-based actuation runs, such as DDPG, DQN, PPO. Contains control method parameters. See just help 'show LearningBased' for details."          
+
+
+  sim_params:
+    summary: Generate a solver configuration file.
+    flag_groups:
+      - name: Simulation Parameters
+        description: "Core solver settings shared by all control methods."
+        flags:
+          - name: --steps
+            description: "Number of solver iterations to run."
+          - name: --reynolds-number
+            description: "Friction Reynolds number."
+          - name: --mach-number
+            description: "Mach number of the flow."
+          - name: --x-divisions
+            description: "Grid divisions along the x-axis (nxmax)."
+          - name: --y-divisions
+            description: "Grid divisions along the y-axis (nymax)."
+          - name: --z-divisions
+            description: "Grid divisions along the z-axis (nzmax)."
+          - name: --json
+            description: "Write configuration in JSON format."
+          - name: --x-length
+            description: "Domain length in the x direction (rlx)."
+          - name: --y-length
+            description: "Domain length in the y direction (rly)."
+          - name: --z-length
+            description: "Domain length in the z direction (rlz)."
+          - name: --rly-wr
+            description: "Internal rly_wr parameter; must exceed y-length."
+          - name: --mpi-x-split
+            description: "Number of MPI partitions along x; matches mpirun -np."
+          - name: --span-average-io-steps
+            description: "Steps between span-averaged flowfield outputs (0 disables)."
+          - name: --probe-io-steps
+            description: "Steps between probe data outputs (0 disables)."
+          - name: --python-flowfield-steps
+            description: "Steps between full flowfield HDF5 exports (Python only)."
+          - name: --use-python
+            description: "Run solver with Python bindings instead of Fortran."
+          - name: --nymax-wr
+            description: "Internal nymax_wr parameter; must exceed y-divisions."
+          - name: --sensor-threshold
+            description: "Shock sensor threshold (<1 enables, ≥1 disables)."
+
+  OpenLoop:
+    summary: Use an OpenLoop control method.
+    flag_groups:
+      - name: Constant
+        description: "Constant velocity jet actuation."
+        flags:
+          - name: --amplitude
+            description: "Jet actuation amplitude."
+          - name: --slot-start
+            description: "Start x-index of actuator slot."
+          - name: --slot-end
+            description: "End x-index of actuator slot."
+      - name: Sinusoidal
+        description: "Sinusoidal modulation of jet velocity."
+        flags:
+          - name: --amplitude
+            description: "Jet actuation amplitude."
+          - name: --slot-start
+            description: "Start x-index of actuator slot."
+          - name: --slot-end
+            description: "End x-index of actuator slot."
+          - name: --angular-frequency
+            description: "Angular frequency of the sinusoid."
+      - name: dmdc
+        description: "Jet actuation profile for DMDc experiments."
+        flags:
+          - name: --amplitude
+            description: "Jet actuation amplitude."
+          - name: --slot-start
+            description: "Start x-index of actuator slot."
+          - name: --slot-end
+            description: "End x-index of actuator slot."
+        
+  Classical:
+    summary: Use a classical control method
+    flag_groups:
+      - name: placeholder
+        description: "No classical control parameters are currently implemented."
+        flags: []
+        
+  LearningBased:
+    summary: Use a LearningBased control method.
+    flag_groups:
+      - name: ddpg
+        description: "Deep Deterministic Policy Gradient"
+        flags:
+          - name: learning-based
+            description: "ddpg // LearningBased control method used"
+          - name: --slot-start
+            description: "Start x-index of actuator slot."
+          - name: --slot-end
+            description: "End x-index of actuator slot."
+          - name: --train-episodes
+            description: "Number of training episodes."
+          - name: --training-output
+            description: "Path to store training metrics."
+          - name: --eval-episodes
+            description: "Number of evaluation episodes."
+          - name: --eval-max-steps
+            description: "Max steps per evaluation episode."
+          - name: --eval-output
+            description: "File to store evaluation metrics."
+          - name: --checkpoint-interval
+            description: "Episodes between saving checkpoints."
+          - name: --checkpoint-dir
+            description: "Directory for checkpoint files."
+          - name: --seed
+            description: "Random seed."
+          - name: --amplitude
+            description: "Maximum actuation amplitude."
+          - name: --hidden-width
+            description: "Hidden layer width for networks."
+          - name: --learning-rate
+            description: "Optimizer learning rate."
+          - name: --gamma
+            description: "Discount factor."
+          - name: --tau
+            description: "Soft update parameter."
+          - name: --buffer-size
+            description: "Replay buffer capacity."
+      - name: dqn
+        description: "Deep Q Network (DQN)."
+        flags:
+          - name: learning-based
+            description: "dqn // LearningBased control method used"
+          - name: --slot-start
+            description: "Start x-index of actuator slot."
+          - name: --slot-end
+            description: "End x-index of actuator slot."
+          - name: --train-episodes
+            description: "Number of training episodes."
+          - name: --training-output
+            description: "Path to store training metrics."
+          - name: --eval-episodes
+            description: "Number of evaluation episodes."
+          - name: --eval-max-steps
+            description: "Max steps per evaluation episode."
+          - name: --eval-output
+            description: "File to store evaluation metrics."
+          - name: --checkpoint-interval
+            description: "Episodes between saving checkpoints."
+          - name: --checkpoint-dir
+            description: "Directory for checkpoint files."
+          - name: --seed
+            description: "Random seed."
+          - name: --amplitude
+            description: "Maximum actuation amplitude."
+          - name: --hidden-width
+            description: "Hidden layer width for networks."
+          - name: --batch-size
+            description: "Number of samples per training batch."
+          - name: --learning-rate
+            description: "Optimizer learning rate."
+          - name: --target-update
+            description: "Interval for updating target network."
+          - name: --gamma
+            description: "Discount factor."
+          - name: --tau
+            description: "Soft update parameter."
+          - name: --epsilon
+            description: "Exploration epsilon."
+          - name: --buffer-size
+            description: "Replay buffer capacity."
+      - name: ppo
+        description: "Proximal Policy Optimization (PPO). "
+        flags:
+          - name: learning-based
+            description: "ppo // LearningBased control method used"
+          - name: --slot-start
+            description: "Start x-index of actuator slot."
+          - name: --slot-end
+            description: "End x-index of actuator slot."
+          - name: --train-episodes
+            description: "Number of training episodes."
+          - name: --training-output
+            description: "Path to store training metrics."
+          - name: --eval-episodes
+            description: "Number of evaluation episodes."
+          - name: --eval-max-steps
+            description: "Max steps per evaluation episode."
+          - name: --eval-output
+            description: "File to store evaluation metrics."
+          - name: --checkpoint-interval
+            description: "Episodes between saving checkpoints."
+          - name: --checkpoint-dir
+            description: "Directory for checkpoint files."
+          - name: --seed
+            description: "Random seed."
+          - name: --amplitude
+            description: "Maximum actuation amplitude."
+          - name: --hidden-width
+            description: "Hidden layer width for networks."
+          - name: --batch-size
+            description: "Number of samples per training batch."
+          - name: --learning-rate
+            description: "Optimizer learning rate."
+          - name: --gamma
+            description: "Discount factor."
+          - name: --eps-clip
+            description: "Policy clipping parameter."
+          - name: --k-epochs
+            description: "Optimization epochs per update."
+
+  run:
+    summary: Run the STREAMS solver locally.
+    flag_groups:
+      - name: group1
+        description: ""
+        flags:
+          - name: --workdir
+            description: "Defined above config in justfile // Static, do not change. Location where evaluation simulation are run."
+          - name: --config
+            description: ""
+          - name: --database
+            description: ""
+          - name: --python-mount
+            description: "Path to the Python files bound to streams.sif at runtime // Static, do not change."
+
+  eval:
+    summary: Evaluate a saved checkpoint with the solver.
+    flag_groups:
+      - name: group1
+        description: ""
+        flags:
+          - name: --workdir
+            description: "Defined above config in justfile // Static, do not change. Location where evaluation simulation are run."
+          - name: --config
+            description: ""
+          - name: --database
+            description: ""
+          - name: --python-mount
+            description: "Path to the Python files bound to streams.sif at runtime // Static, do not change. "
+          - name: --eval-only
+            description: "No argument required. Used to skip the training loop in python code."
+          - name: --checkpoint
+            description: "Only checkpoint_tag must be changed by user, which is defined above the config section of the justfile."
+
+  analysis:
+    summary: Analyze simulation results for a given episode.
+    flag_groups:
+      - name: POD
+        description: "Applies POD to span averaged data"
+        flags:
+          - name: --results_dir
+            description: "Defined above config in justfile // Static, do not change. Location where results are saved."
+          - name: --episode-tag
+            description: "ep_#### // Applicable to LearningBased runs with multiple evaluation episodes"
+          - name: --analysis-method
+            description: "POD // Analysis method"
+      - name: DMD
+        description: "Applies DMD to span averaged data"
+        flags:
+          - name: --results_dir
+            description: "Defined above config in justfile // Static, do not change. Location where results are saved."
+          - name: --episode-tag
+            description: "ep_#### // Applicable to LearningBased runs with multiple evaluation episodes"
+          - name: --analysis-method
+            description: "DMD // Analysis method"
+      - name: pysensors
+        description: "Uses PySensors, developed by the Brunton lab, to identify the most useful sensor locations for field reconstruction"
+        flags:
+          - name: --results_dir
+            description: "Defined above config in justfile // Static, do not change. Location where results are saved."
+          - name: --episode-tag
+            description: "ep_#### // Applicable to LearningBased runs with multiple evaluation episodes"
+          - name: --analysis-method
+            description: "pysensors // Analysis method"
+          - name: --num-sensors
+            description: "The number of sensor locations to generate"
+
+  visualize:
+    summary: Visualize simulation outputs.
+    flag_groups:
+      - name: snapshot
+        description: "Produces of snapshot of field data"
+        flags:
+          - name: --results_dir
+            description: "Defined above config in justfile // Static, do not change. Location where results are saved."
+          - name: --episode-tag
+            description: "ep_#### // Applicable to LearningBased runs with multiple evaluation episodes"
+          - name: --vis-type
+            description: "snapshot // visualization type"
+          - name: --snapshot-number
+            description: "0 < flag value < total number of snapshots // the snapshot to be visualized"
+          - name: --variable
+            description: "rho, u, v, w // the field data to be visualized"         
+      - name: animation
+        description: "Creates an animation (gif) of selected field data over total simulation time"
+        flags:
+          - name: --results_dir
+            description: "Defined above config in justfile // Static, do not change. Location where results are saved."
+          - name: --episode-tag
+            description: "ep_#### // Applicable to LearningBased runs with multiple evaluation episodes"
+          - name: --vis-type
+            description: "animation // visualization type"
+          - name: --variable
+            description: "rho, u, v, w // the field data to be visualized"
+      - name: rl_metrics
+        description: "Only applicable to LearningBased runs. Produces plots of actuation and reward during evaluation."
+        flags:
+          - name: --results_dir
+            description: "Defined above config in justfile // Static, do not change. Location where results are saved."
+          - name: --episode-tag
+            description: "ep_#### // Applicable to LearningBased runs with multiple evaluation episodes"
+          - name: --vis-type
+            description: "rl_metrics // visualization type"
+      - name: sa_data
+        description: "Produces plots of energy, dissipation rate, and shear stress."
+        flags:
+          - name: --results_dir
+            description: "Defined above config in justfile // Static, do not change. Location where results are saved."
+          - name: --episode-tag
+            description: "ep_#### // Applicable to LearningBased runs with multiple evaluation episodes"
+          - name: --vis-type
+            description: "sa_data // visualization type"
+
+  model:
+    summary: Build reduced-order models from results.
+    flag_groups:
+      - name: dmdc
+        description: "Applies DMDc to span averaged U and V field data"
+        flags:
+          - name: --results_dir
+            description: "Defined above config in justfile // Static, do not change. Location where results are saved."
+          - name: --episode-tag
+            description: "ep_#### // Applicable to LearningBased runs with multiple evaluation episodes"
+          - name: --model-type
+            description: "dmdc // model type used"
+          - name: --energy
+            description: "0-100 // Energy ROM retains"
+
+  shell:
+    summary: Start a shell inside the built container.
+    flag_groups: []
+
+  local:
+    summary: Start a shell binding STREAMS_DIR to /streams.
+    flag_groups: []
+
+  vtk:
+    summary: Convert HDF5 output to VTK files.
+    flag_groups: []
+
+# Template for future recipes:
+# recipes:
+#   recipe_name:
+#     summary: Short explanation.
+#     flag_groups:
+#       - name: group1
+#         description: Flags that must be provided together
+#         flags:
+#           - name: --flag-a
+#             description: Flag description
+#       - name: group2
+#         description: Another required group
+#         flags:
+#           - name: --flag-c
+#             description: Flag description
