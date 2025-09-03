@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import math
+from collections import deque
 import numpy as np
 import gymnasium
 from gymnasium import spaces
@@ -163,6 +164,16 @@ class StreamsGymEnv(gymnasium.Env):
         self.step_count = 0
         self.max_episode_steps = int(self.config.temporal.num_iter)
         self.current_time = 0.0
+        self.action_queue = deque()
+
+        # Parameters for delayed reward via eligibility traces
+        # "lag_steps" controls how many steps elapse before credit is assigned to an action.
+        # "lambda_trace" controls exponential decay of eligibility for accumulating rewards.
+        # TODO: Calculate lag_steps based on convection jet
+        self.action_queue = deque()
+        self.lag_steps = 50
+        self.lambda_trace = 0.95
+
 
         if self.rank == 0:
             print(f'[StreamsEnvironment.py] gym environment initialized')
@@ -308,6 +319,8 @@ class StreamsGymEnv(gymnasium.Env):
         # Reset counters
         self.step_count = 0
         self.current_time = 0.0
+        # Rest action_queue
+        self.action_queue.clear()
 
         # Gym expects a float32 array
         # return tau_global.astype(np.float32) 
@@ -347,13 +360,25 @@ class StreamsGymEnv(gymnasium.Env):
         streams.wrap_tauw_calculate()
         streams.wrap_uoverslot_collect()
 
-        # Reward based on wall shear stress
+        # Track actions with an eligibility trace to delay rewards
+        self.action_queue.append({"eligibility": 1.0, "accum_reward": 0.0})
+
+        # Immediate reward based on wall shear stress
         if self.tauw_shape > 0:
             tau = streams.wrap_get_tauw_x(self.tauw_shape)
         else:
             tau = np.empty((0,), dtype=np.float64)
         tau_global = self._gather_nonempty(tau)
-        reward = -float(np.sum(tau_global**2))
+        r_t = -float(np.sum(tau_global**2))
+
+        for entry in self.action_queue:
+            entry["accum_reward"] += entry["eligibility"] * r_t
+            entry["eligibility"] *= self.lambda_trace
+
+        if len(self.action_queue) > self.lag_steps:
+            reward = self.action_queue.popleft()["accum_reward"]
+        else:
+            reward = 0.0
 
         # Observation: span‑averaged U over slot
         if self._has_uoverslot:
@@ -377,7 +402,8 @@ class StreamsGymEnv(gymnasium.Env):
         info = {
             "time": self.current_time,
             "step": self.step_count,
-            "jet_amplitude": amp
+            "jet_amplitude": amp,
+            "instant_reward": r_t,
         }
         return obs, reward, done, info
 

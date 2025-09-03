@@ -15,7 +15,9 @@ if command -v apt-get >/dev/null 2>&1; then
     libhdf5-mpi-dev \
     build-essential \
     libopenmpi-dev \
-    cargo
+    rustc \
+    cargo \
+    just
 elif command -v brew >/dev/null 2>&1; then
   brew update
   brew install \

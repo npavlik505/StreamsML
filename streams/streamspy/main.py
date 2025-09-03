@@ -247,7 +247,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
             
             while not done and step < env.config.jet.jet_params["eval_max_steps"]:
                 if rank == 0:
-                    action = agent.choose_action(torch.tensor(obs, dtype=torch.float32))
+                    action = agent.choose_action(torch.tensor(obs, dtype=torch.float32), step)
                 else:
                     action = None
                 action = comm.bcast(action, root=0)

@@ -129,6 +129,8 @@ class agent(BaseAgent):
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.lr)
 
         self.MseLoss = nn.MSELoss()
+        
+        self.add_noise = True 
 
     def initialize_networks(self) -> None:
         # save_dir = f"{self.run_name}/Initial_Parameters"
@@ -140,10 +142,10 @@ class agent(BaseAgent):
         torch.save(self.critic_target.state_dict(), os.path.join(save_dir, "critic_target_initial.pt"))
 
     # An action is chosen by feeding the state into the actor NN which outputs the action a
-    def choose_action(self, s, step, add_noise: bool = True):
+    def choose_action(self, s, step):
         s = torch.unsqueeze(torch.clone(s), 0)
         a = self.actor(s).data.numpy().flatten()
-        if add_noise:
+        if self.add_noise:
             if step == 0:
                 self.ou_noise.reset()
             a = a + self.ou_noise.sample()
@@ -205,6 +207,7 @@ class agent(BaseAgent):
         torch.save(self.critic.state_dict(), directory / f"critic_{tag}.pt")
 
     def load_checkpoint(self, checkpoint: Path) -> None:
+        self.add_noise = False
         directory = checkpoint.parent
         tag = checkpoint.name
         self.actor.load_state_dict(torch.load(directory / f"actor_{tag}.pt"))
