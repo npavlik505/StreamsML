@@ -54,7 +54,7 @@ class ReplayBuffer:
 
 
 class agent(BaseAgent):
-    def __init__(self, state_dim, action_dim, max_action, hidden_width, buffer_size, batch_size, lr, target_update, GAMMA, TAU, epsilon):
+    def __init__(self, state_dim, action_dim, max_action, hidden_width, buffer_size, batch_size, lr, target_update, GAMMA, TAU, epsilon, checkpoint_dir):
         self.hidden_width = hidden_width
         self.batch_size = batch_size
         self.GAMMA = GAMMA

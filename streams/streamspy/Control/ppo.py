@@ -58,7 +58,7 @@ class ActorCritic(nn.Module):
 class agent(BaseAgent):
     """PPO agent used for learning-based jet actuation."""
 
-    def __init__(self, state_dim: int, action_dim: int, max_action: float, hidden_width: int, batch_size: int, lr: float, GAMMA: float, eps_clip: float, K_epochs: int):
+    def __init__(self, state_dim: int, action_dim: int, max_action: float, hidden_width: int, batch_size: int, lr: float, GAMMA: float, eps_clip: float, K_epochs: int, checkpoint_dir):
         self.batch_size = batch_size
         self.gamma = GAMMA
         self.eps_clip = eps_clip

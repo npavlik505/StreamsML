@@ -51,6 +51,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
     rc.initialize = False
     rc.finalize = False
     from mpi4py import MPI
+    from collections import deque
 
     # Script imports
     # from env.config.jet.parameters["strategy"] import agent
@@ -113,27 +114,21 @@ elif env.config.jet.jet_method_name == "LearningBased":
         # open output file for time, amp, reward, and obs in the training loop to be collected
         write_training = env.config.jet.jet_params["training_output"] is not None
         h5train = time_dset = amp_dset = reward_dset = obs_dset = None
-        print("Just before write_training")
         if write_training:
             if rank == 0:
                 # Define path, create directory and h5, gather data to allocate shape
                 training_output_path = Path(env.config.jet.jet_params["training_output"])
                 training_output_path.parent.mkdir(parents=True, exist_ok=True)
-                print("Just after training_output_path.parent.mkdir")
                 # h5train = io_utils.IoFile(str(training_output_path))
                 h5train = io_utils.IoFile(str(training_output_path), comm=None)
-                print("Just after h5train")
                 training_episodes = env.config.jet.jet_params["train_episodes"]
                 training_steps = env.max_episode_steps
                 observation_dim = env.observation_space.shape[0]
-                print("Just before h5 file creation")
                 # Create datasets within the h5 file
                 time_dset = h5train.file.create_dataset("time", shape=(training_episodes, training_steps), dtype="f4")
                 amp_dset = h5train.file.create_dataset("amplitude", shape=(training_episodes, training_steps), dtype="f4")
                 reward_dset = h5train.file.create_dataset("reward", shape=(training_episodes, training_steps), dtype="f4")
-                print("Just after reward h5 file creation")
                 obs_dset = h5train.file.create_dataset("observation", shape=(training_episodes, training_steps, observation_dim), dtype="f4", chunks=(1, 100, observation_dim))
-                print("Just after obs h5 file creation")
             else:
                 training_output_path = None
             comm.Barrier()
@@ -147,6 +142,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
             done = False
             ep_reward = 0.0
             step = 0
+            sa_queue = deque()
             while not done:
                 if rank == 0:
                     obs_t = torch.tensor(obs, dtype=torch.float32)
@@ -154,16 +150,21 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 else:
                     action = None
                 action = comm.bcast(action, root=0)
+                prev_obs = obs
                 next_obs, reward, done, info = env.step(action)
                 done = comm.bcast(done, root=0)
                 if rank == 0:
-                    ep_reward += reward
-                    agent.learn(obs, action, reward, next_obs)
-                    # if write_training and step % write_spacing == 0:
-                    time_dset[ep, step] = info["time"]
-                    amp_dset[ep, step] = action
-                    reward_dset[ep, step] = reward
-                    obs_dset[ep, step, :] = obs
+                    sa_queue.append((prev_obs, action, next_obs, info["time"]))
+                    if len(sa_queue) > env.lag_steps:
+                        old_obs, old_action, old_next, old_time = sa_queue.popleft()
+                        ep_reward += reward
+                        agent.learn(old_obs, old_action, reward, old_next)
+                        if write_training:
+                            idx = step - env.lag_steps
+                            time_dset[ep, idx] = old_time
+                            amp_dset[ep, idx] = old_action
+                            reward_dset[ep, idx] = reward
+                            obs_dset[ep, idx, :] = old_obs
                 step += 1
                 obs = next_obs
             if rank == 0:
@@ -203,7 +204,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 eval_output_path.parent.mkdir(parents=True, exist_ok=True)
                 h5eval = io_utils.IoFile(str(eval_output_path))
                 eval_episodes = env.config.jet.jet_params["eval_episodes"]
-                eval_steps = env.max_episode_steps
+                eval_steps = env.config.jet.jet_params["eval_max_steps"]
                 observation_dim = env.observation_space.shape[0]
 
                 time_dset = h5eval.file.create_dataset("time", shape=(eval_episodes, eval_steps), dtype="f4")
@@ -244,6 +245,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
             done = False
             step = 0
             ep_reward = 0.0
+            sa_queue = deque()
             
             while not done and step < env.config.jet.jet_params["eval_max_steps"]:
                 if rank == 0:
@@ -251,17 +253,22 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 else:
                     action = None
                 action = comm.bcast(action, root=0)
+                prev_obs = obs
                 obs, reward, done, info = env.step(action)
                 done = comm.bcast(done, root=0)
                 if write_eval:
                     env.log_step_h5(action)
-                    if rank == 0:
+                if rank == 0:
+                    sa_queue.append((prev_obs, action, info["time"]))
+                    if len(sa_queue) > env.lag_steps:
+                        old_obs, old_action, old_time = sa_queue.popleft()
                         ep_reward += reward
-                        # if write_eval and step % write_spacing == 0:
-                        time_dset[ep, step] = info["time"]
-                        amp_dset[ep, step] = action
-                        reward_dset[ep, step] = reward
-                        obs_dset[ep, step, :] = obs
+                        idx = step - env.lag_steps
+                        if write_eval:
+                            time_dset[ep, idx] = old_time
+                            amp_dset[ep, idx] = old_action
+                            reward_dset[ep, idx] = reward
+                            obs_dset[ep, idx, :] = old_obs
                 step += 1
             if write_eval:
                 comm.Barrier()

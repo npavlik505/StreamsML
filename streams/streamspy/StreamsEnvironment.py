@@ -169,7 +169,7 @@ class StreamsGymEnv(gymnasium.Env):
         # Parameters for delayed reward via eligibility traces
         # "lag_steps" controls how many steps elapse before credit is assigned to an action.
         # "lambda_trace" controls exponential decay of eligibility for accumulating rewards.
-        # TODO: Calculate lag_steps based on convection jet
+        # TODO: Calculate lag_steps based on convection jet and let user specify their own lag_steps to overwrite calculation if specified
         self.action_queue = deque()
         self.lag_steps = 50
         self.lambda_trace = 0.95
