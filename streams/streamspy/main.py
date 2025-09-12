@@ -34,9 +34,25 @@ if env.config.jet.jet_method_name == "OpenLoop":
     exit()
     
 elif env.config.jet.jet_method_name == "Classical":
-    # Imports specific to classical control strategies
+    # General imports
+    import argparse # Used for attribute access, defining default values and data-type, and providing ready made help calls
+    import json
+    import signal
+    from pathlib import Path
+    from typing import Tuple
+    import torch
+    from mpi4py import rc
+    rc.initialize = False
+    rc.finalize = False
+    from mpi4py import MPI
+    from collections import deque
+
+    # Script imports
     import importlib
-    import inspect
+    from base_Classical import BaseController
+    import io_utils
+
+    STOP = False
 
     comm = env.comm
     rank = env.rank
@@ -47,32 +63,14 @@ elif env.config.jet.jet_method_name == "Classical":
     save_dir = Path("/distribute_save")
     env.init_h5_io(save_dir)
 
-    # Gather basic environment information for controller initialization
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.shape[0]
-    max_action = float(env.action_space.high[0])
-    min_action = float(env.action_space.low[0])
-
     # Dynamically load the requested classical controller
     strategy = env.config.jet.jet_strategy_name
     module_path = f"Classical.{strategy}"
     controller_module = importlib.import_module(module_path)
     controller_class = getattr(controller_module, "controller")
 
-    controller_kwargs = dict(env.config.jet.jet_params)
-    controller_kwargs.update(
-        {
-            "state_dim": state_dim,
-            "action_dim": action_dim,
-            "max_action": max_action,
-            "min_action": min_action,
-        }
-    )
-    sig = inspect.signature(controller_class.__init__)
-    filtered = {k: v for k, v in controller_kwargs.items() if k in sig.parameters}
-
     if rank == 0:
-        controller = controller_class(**filtered)
+        controller = controller_class(env)
     else:
         controller = None
 
@@ -119,7 +117,6 @@ elif env.config.jet.jet_method_name == "LearningBased":
     import importlib
     from base_LearningBased import BaseAgent
     import io_utils
-    import inspect
 
     STOP = False
 
@@ -129,10 +126,6 @@ elif env.config.jet.jet_method_name == "LearningBased":
         rank = comm.rank
         if rank == 0:
             print(f'TRAINING')
-        
-        # print("[rl_control.py] Define objects for observation and action space")
-        state_dim = env.observation_space.shape[0]
-        action_dim = env.action_space.shape[0]
         
         # print("[rl_control.py] Define reward objects")
         best_reward = -float("inf")
@@ -338,15 +331,11 @@ elif env.config.jet.jet_method_name == "LearningBased":
     # Use GPU if available.
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    state_dim = env.observation_space.shape[0] # Collect the state dimension (tau x, equal to x grid dim)
-    action_dim = env.action_space.shape[0] # Collect the action dimension (integer valued jet amplitude)
-    max_action = float(env.action_space.high[0]) # Specified in justfile
-
     if env.rank == 0:
-        print(f'state_dim: {state_dim}')
-        print(f'action_dim: {action_dim}')
-        print(f'max_action: {max_action}')
-        print(f"Using device: {device} (CUDA available: {torch.cuda.is_available()})")
+        print(f'state_dim: {env.observation_space.shape[0]}') # Collect the state dimension (tau x, equal to x grid dim)
+        print(f'action_dim: {env.action_space.shape[0] }') # Collect the action dimension (integer valued jet amplitude)
+        print(f'max_action: {float(env.action_space.high[0])}') # Specified in justfile
+        print(f"Using device: {device} (CUDA available: {torch.cuda.is_available()})") # Display whether GPU was in fact available
     
     strategy = env.config.jet.jet_strategy_name
     module_path = f"Control.{strategy}"
@@ -369,30 +358,12 @@ elif env.config.jet.jet_method_name == "LearningBased":
                     pass
         # make sure all ranks wait for the cleanup to finish
         env.comm.Barrier()
-    
-    agent_kwargs = {
-        "checkpoint_dir": str(checkpoint_dir),
-        "hidden_width": env.config.jet.jet_params.get("hidden_width"),
-        "buffer_size": env.config.jet.jet_params.get("buffer_size"),
-        "batch_size": env.config.jet.jet_params.get("batch_size"),
-        "lr": env.config.jet.jet_params.get("learning_rate"),
-        "target_update" :env.config.jet.jet_params.get("target_update"),
-        "GAMMA": env.config.jet.jet_params.get("gamma"),
-        "TAU": env.config.jet.jet_params.get("tau"),
-        "epsilon": env.config.jet.jet_params.get("epsilon"),
-        "eps_clip": env.config.jet.jet_params.get("eps_clip"),
-        "K_epochs": env.config.jet.jet_params.get("K_epochs"),
-    } 
-    
-    # keeps only the parameters that the selected agent accepts
-    sig = inspect.signature(agent_class.__init__)
-    filtered = {k: v for k, v in agent_kwargs.items() if k in sig.parameters}
 
     comm = env.comm
     rank = env.rank
 
     if rank == 0:
-        agent = agent_class(state_dim, action_dim, max_action, **filtered)
+        agent = agent_class(env)
     else:
         agent = None
 

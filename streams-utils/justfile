@@ -48,7 +48,7 @@ config_output := "$STREAMS_DIR/streamspy/output/input.json"
 
 config:
 	# create output directory if it does not exist
-        test -d {{results_dir}} || mkdir -p {{results_dir}}
+	test -d {{results_dir}} || mkdir -p {{results_dir}}
 	
 	echo {{config_output}}
 

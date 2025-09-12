@@ -54,7 +54,21 @@ class ReplayBuffer:
 
 
 class agent(BaseAgent):
-    def __init__(self, state_dim, action_dim, max_action, hidden_width, buffer_size, batch_size, lr, target_update, GAMMA, TAU, epsilon, checkpoint_dir):
+    def __init__(self, env):
+        params = env.config.jet.jet_params
+        state_dim = env.observation_space.shape[0]
+        action_dim = env.action_space.shape[0]
+        max_action = float(env.action_space.high[0])
+        hidden_width = params.get("hidden_width")
+        buffer_size = params.get("buffer_size")
+        batch_size = params.get("batch_size")
+        lr = params.get("learning_rate")
+        target_update = params.get("target_update")
+        GAMMA = params.get("gamma")
+        TAU = params.get("tau")
+        epsilon = params.get("epsilon")
+        checkpoint_dir = params.get("checkpoint_dir")
+        
         self.hidden_width = hidden_width
         self.batch_size = batch_size
         self.GAMMA = GAMMA
@@ -66,8 +80,8 @@ class agent(BaseAgent):
         self.max_amplitude = max_action
 
         # Discretization step 1: Three discrete actions are provided as network outputs
-        self.discretized_action_dim = torch.tensor([-self.max_amplitude, 0.0, self.max_amplitude,], dtype=torch.float32)
-        self.q = QNetwork(state_dim, len(self.discretized_action_dim), hidden_width)        
+        self.discretized_action_dim = torch.tensor([-self.max_amplitude, 0.0, self.max_amplitude], dtype=torch.float32)
+        self.q = QNetwork(state_dim, len(self.discretized_action_dim), hidden_width)      
         
         self.q_target = copy.deepcopy(self.q)
 

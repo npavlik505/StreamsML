@@ -39,10 +39,10 @@ training := "./RL_metrics/training"
 checkpoint := "./RL_metrics/checkpoint"
 
 config:
+	# create output directory if it does not exist
+	test -d {{results_dir}} || mkdir -p {{results_dir}}
+	
 	echo {{config_output}}
-
-	# 600, 208, 100
-	#--fixed-dt 0.0008439 \
 
 	cargo r -- config-generator {{config_output}} \
 		{{streams_flow_type}} \

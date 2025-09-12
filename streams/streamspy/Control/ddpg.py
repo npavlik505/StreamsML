@@ -103,12 +103,24 @@ class OUNoise:
 #The hyperparameters are defined, the actor & critc NN are defined as attributes and their Target NN are created
 #Lastly, the optimizer, Adam, is selected to adjust the NN weights and the MSELoss is selected for use in the backprop calc
 class agent(BaseAgent):
-    def __init__(self, state_dim, action_dim, max_action, hidden_width, buffer_size, batch_size, lr, GAMMA, TAU, checkpoint_dir):
+    def __init__(self, env):
+        params = env.config.jet.jet_params
+        state_dim = env.observation_space.shape[0]
+        action_dim = env.action_space.shape[0]
+        max_action = float(env.action_space.high[0])
+        hidden_width = params.get("hidden_width")
+        buffer_size = params.get("buffer_size")
+        batch_size = params.get("batch_size")
+        lr = params.get("learning_rate")
+        GAMMA = params.get("gamma")
+        TAU = params.get("tau")
+        checkpoint_dir = params.get("checkpoint_dir")    
+    
         self.hidden_width = hidden_width  # The number of neurons in hidden layers of the neural network
-        self.batch_size = batch_size #100  # batch size
-        self.GAMMA = GAMMA # 0.99 discount factor
-        self.TAU = TAU # 0.005 Softly update the target network
-        self.lr = lr # 3e-4 learning rate
+        self.batch_size = batch_size  # batch size
+        self.GAMMA = GAMMA  # discount factor
+        self.TAU = TAU  # Softly update the target network
+        self.lr = lr  # learning rate
 
         self.actor = Actor(state_dim, action_dim, self.hidden_width, max_action)
         self.actor_target = copy.deepcopy(self.actor)
