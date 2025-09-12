@@ -71,16 +71,16 @@ subroutine wrap_get_w(w_out, n1, n2, n3, n4) bind(C, name="wrap_get_w")
     w_out = real(w, kind=c_float)
 end subroutine wrap_get_w
 
-subroutine wrap_get_uoverslot(arr, n1, n2) bind(C, name="wrap_get_uoverslot")
+subroutine wrap_get_w_avzg_slice(w_avzg_out, obs_xstart, obs_xend, obs_ystart, obs_yend, obs_type) bind(C, name="wrap_get_w_avzg_slice")
     use iso_c_binding, only: c_int, c_float
-    use mod_streams,      only: uoverslot
-    !f2py intent(c) wrap_get_uoverslot
-    !f2py intent(out) arr
+    use mod_streams,      only: w_avzg
+    !f2py intent(c) wrap_get_w_avzg_slice
+    !f2py intent(out) w_avzg_out
     implicit none
-    integer(c_int), intent(in), value :: n1, n2
-    real   (c_float), intent(out)      :: arr(n1, n2)
-    arr = real(uoverslot(1:n1, 1:n2), kind=c_float)
-end subroutine wrap_get_uoverslot
+    integer(c_int), intent(in), value :: obs_xstart, obs_xend, obs_ystart, obs_yend, obs_type
+    real(c_float), intent(out) :: w_avzg_out(1, obs_xend - obs_xstart + 1, obs_yend - obs_ystart + 1)
+    w_avzg_out(1,:,:) = real(w_avzg(obs_type, obs_xstart:obs_xend, obs_ystart:obs_yend), kind=c_float)
+end subroutine wrap_get_w_avzg_slice
 
 subroutine wrap_get_x_start_slot(val) bind(C, name="wrap_get_x_start_slot")
     use iso_c_binding
@@ -200,14 +200,3 @@ subroutine wrap_get_tauw_x_shape(n) bind(C, name="wrap_get_tauw_x_shape")
     integer(c_int), intent(out) :: n
     n = size(tauw_x)
 end subroutine wrap_get_tauw_x_shape
-
-subroutine wrap_get_uoverslot_shape(n1, n2) bind(C, name="wrap_get_uoverslot_shape")
-    use iso_c_binding, only: c_int
-    use mod_streams,      only: uoverslot
-    !f2py intent(c) wrap_get_uoverslot_shape
-    !f2py intent(out) n1, n2
-    implicit none
-    integer(c_int), intent(out) :: n1, n2
-    n1 = size(uoverslot, 1)
-    n2 = size(uoverslot, 2)
-end subroutine wrap_get_uoverslot_shape

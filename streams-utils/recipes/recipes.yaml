@@ -130,6 +130,16 @@ recipes:
             description: "Start x-index of actuator slot."
           - name: --slot-end
             description: "End x-index of actuator slot."
+          - name: --obs-type
+            description: " "rho", "u", "v", "w", "p", "T", "rho_sqrd", "u_sqrd", "v_sqrd", "w_sqrd", "p_sqrd", "T_sqrd", "rhou", "rhov", "rhow", "rhou_sqrd", "rhov_sqrd", "rhow_sqrd", "rhouv", "dyn_visc" "
+          - name: --obs-xstart
+            description: "The x coordinate marking the start of the sensing location. 0<obs-xstart<obs-xend<x-divisions"
+          - name: --obs-xend
+            description: "The x coordinate marking the end of the sensing location. 0<obs-xstart<obs-xend<x-divisions"
+          - name: --obs-ystart
+            description: "The y coordinate marking the start of the sensing location. 0<obs-ystart<obs-yend<y-divisions"
+          - name: --obs-yend
+            description: "The y coordinate marking the end of the sensing location. 0<obs-ystart<obs-yend<y-divisions"
           - name: --train-episodes
             description: "Number of training episodes."
           - name: --training-output
@@ -167,6 +177,16 @@ recipes:
             description: "Start x-index of actuator slot."
           - name: --slot-end
             description: "End x-index of actuator slot."
+          - name: --obs-type
+            description: " "rho", "u", "v", "w", "p", "T", "rho_sqrd", "u_sqrd", "v_sqrd", "w_sqrd", "p_sqrd", "T_sqrd", "rhou", "rhov", "rhow", "rhou_sqrd", "rhov_sqrd", "rhow_sqrd", "rhouv", "dyn_visc" "
+          - name: --obs-xstart
+            description: "The x coordinate marking the start of the sensing location. 0<obs-xstart<obs-xend<x-divisions"
+          - name: --obs-xend
+            description: "The x coordinate marking the end of the sensing location. 0<obs-xstart<obs-xend<x-divisions"
+          - name: --obs-ystart
+            description: "The y coordinate marking the start of the sensing location. 0<obs-ystart<obs-yend<y-divisions"
+          - name: --obs-yend
+            description: "The y coordinate marking the end of the sensing location. 0<obs-ystart<obs-yend<y-divisions"
           - name: --train-episodes
             description: "Number of training episodes."
           - name: --training-output
@@ -210,6 +230,16 @@ recipes:
             description: "Start x-index of actuator slot."
           - name: --slot-end
             description: "End x-index of actuator slot."
+          - name: --obs-type
+            description: " "rho", "u", "v", "w", "p", "T", "rho_sqrd", "u_sqrd", "v_sqrd", "w_sqrd", "p_sqrd", "T_sqrd", "rhou", "rhov", "rhow", "rhou_sqrd", "rhov_sqrd", "rhow_sqrd", "rhouv", "dyn_visc" "
+          - name: --obs-xstart
+            description: "The x coordinate marking the start of the sensing location. 0<obs-xstart<obs-xend<x-divisions"
+          - name: --obs-xend
+            description: "The x coordinate marking the end of the sensing location. 0<obs-xstart<obs-xend<x-divisions"
+          - name: --obs-ystart
+            description: "The y coordinate marking the start of the sensing location. 0<obs-ystart<obs-yend<y-divisions"
+          - name: --obs-yend
+            description: "The y coordinate marking the end of the sensing location. 0<obs-ystart<obs-yend<y-divisions"
           - name: --train-episodes
             description: "Number of training episodes."
           - name: --training-output

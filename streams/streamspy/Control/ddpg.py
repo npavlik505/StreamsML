@@ -20,7 +20,7 @@ import torch.nn.functional as F
 import time
 import inspect
 
-from streamspy.base_agent import BaseAgent
+from streamspy.base_LearningBased import BaseAgent
 
 #Define actor and critic NN.
 # Actor produces single action; The state is inputed, the action is out made continuous by multiplying max acion with tanh(NN output)

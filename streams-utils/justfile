@@ -47,13 +47,16 @@ config_output := "$STREAMS_DIR/streamspy/output/input.json"
 
 
 config:
+	# create output directory if it does not exist
+        test -d {{results_dir}} || mkdir -p {{results_dir}}
+	
 	echo {{config_output}}
 
 	# 600, 208, 100
 
 	cargo r -- \
 		config-generator {{config_output}} {{streams_flow_type}} \
-		--steps 100 \
+		--steps 55 \
 		--reynolds-number 250 \
 		--mach-number 2.28 \
 		--x-divisions 600 \
@@ -65,7 +68,7 @@ config:
 		--z-length 3.8 \
 		--rly-wr 2.5 \
 		--mpi-x-split 4 \
-		--span-average-io-steps 2 \
+		--span-average-io-steps 10 \
 		--probe-io-steps 0 \
 		--python-flowfield-steps 500 \
 		--use-python \
@@ -74,10 +77,15 @@ config:
 		learning-based ddpg \
 		    --slot-start 100 \
 		    --slot-end 149 \
-		    --train-episodes 2 \
+		    --obs-type v \
+		    --obs-xstart 1 \
+		    --obs-xend 50 \
+		    --obs-ystart 1 \
+		    --obs-yend 50 \
+		    --train-episodes 1 \
 		    --training-output {{training}} \
 		    --eval-episodes 1 \
-		    --eval-max-steps 50 \
+		    --eval-max-steps 55 \
 		    --eval-output {{eval}} \
 		    --checkpoint-interval 5 \
 		    --checkpoint-dir {{checkpoint}} \
@@ -88,7 +96,8 @@ config:
 		    --tau 0.005 \
 		    --buffer-size 100000
 
-	cat {{config_output}}	
+	cat {{config_output}}
+	
 	
 run:
 	cargo r -- run-local \

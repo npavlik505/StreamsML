@@ -13,6 +13,8 @@ env = StreamsGymEnv()
 
 if env.config.jet.jet_method_name == "OpenLoop":
 
+    if rank == 0:
+        print(f'OPENLOOP')
     # Instantiate environment and prep h5 files for standard datasets
     # env = StreamsGymEnv()
     save_dir = Path("/distribute_save")
@@ -32,7 +34,67 @@ if env.config.jet.jet_method_name == "OpenLoop":
     exit()
     
 elif env.config.jet.jet_method_name == "Classical":
-    print("Classical control methods have yet to be implemented")
+    # Imports specific to classical control strategies
+    import importlib
+    import inspect
+
+    comm = env.comm
+    rank = env.rank
+
+    if rank == 0:
+        print(f'CLASSICAL')
+
+    save_dir = Path("/distribute_save")
+    env.init_h5_io(save_dir)
+
+    # Gather basic environment information for controller initialization
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.shape[0]
+    max_action = float(env.action_space.high[0])
+    min_action = float(env.action_space.low[0])
+
+    # Dynamically load the requested classical controller
+    strategy = env.config.jet.jet_strategy_name
+    module_path = f"Classical.{strategy}"
+    controller_module = importlib.import_module(module_path)
+    controller_class = getattr(controller_module, "controller")
+
+    controller_kwargs = dict(env.config.jet.jet_params)
+    controller_kwargs.update(
+        {
+            "state_dim": state_dim,
+            "action_dim": action_dim,
+            "max_action": max_action,
+            "min_action": min_action,
+        }
+    )
+    sig = inspect.signature(controller_class.__init__)
+    filtered = {k: v for k, v in controller_kwargs.items() if k in sig.parameters}
+
+    if rank == 0:
+        controller = controller_class(**filtered)
+    else:
+        controller = None
+
+    obs = env.reset()
+    if rank == 0 and hasattr(controller, "reset"):
+        controller.reset()
+
+    done = False
+    step = 0
+    while not done and step < env.max_episode_steps:
+        if rank == 0:
+            action = controller.compute_action(obs)
+        else:
+            action = None
+        action = comm.bcast(action, root=0)
+        obs, reward, done, info = env.step(np.array([action], dtype=np.float32))
+        env.log_step_h5(info["jet_amplitude"])
+        done = comm.bcast(done, root=0)
+        step += 1
+        
+    # Finalize solver and MPI
+    env.close_h5_io()
     env.close()
     exit()
 
@@ -54,37 +116,12 @@ elif env.config.jet.jet_method_name == "LearningBased":
     from collections import deque
 
     # Script imports
-    # from env.config.jet.parameters["strategy"] import agent
     import importlib
-    # from DDPG import ddpg, ReplayBuffer
-    # from config import Config, Jet
-    from base_agent import BaseAgent
+    from base_LearningBased import BaseAgent
     import io_utils
     import inspect
 
-    LOGGER = logging.getLogger(__name__)
     STOP = False
-
-
-    def _signal_handler(signum, frame):
-        global STOP
-        STOP = True
-        LOGGER.info("Received interrupt signal. Stopping after current episode...")
-
-    signal.signal(signal.SIGINT, _signal_handler)
-
-    def setup_logging() -> None: # Is this worth keeping now that we have H5 files generated for data... ?
-        """Configure root logger to log to console and file."""
-        LOGGER.setLevel(logging.INFO)
-        fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-        log_path = Path("RL_metrics/rl_control.log")
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        fh = logging.FileHandler(log_path)
-        fh.setFormatter(fmt)
-        ch = logging.StreamHandler()
-        ch.setFormatter(fmt)
-        LOGGER.addHandler(fh)
-        LOGGER.addHandler(ch)
 
     def train(env: StreamsGymEnv, agent) -> Path:
         """Train agent and return path to best checkpoint."""
@@ -128,7 +165,12 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 time_dset = h5train.file.create_dataset("time", shape=(training_episodes, training_steps), dtype="f4")
                 amp_dset = h5train.file.create_dataset("amplitude", shape=(training_episodes, training_steps), dtype="f4")
                 reward_dset = h5train.file.create_dataset("reward", shape=(training_episodes, training_steps), dtype="f4")
-                obs_dset = h5train.file.create_dataset("observation", shape=(training_episodes, training_steps, observation_dim), dtype="f4", chunks=(1, 100, observation_dim))
+                # If max simulation steps are greater than 100, chunk the data
+                if env.config.temporal.num_iter > 100:
+                    obs_dset = h5train.file.create_dataset("observation", shape=(training_episodes, training_steps, observation_dim), dtype="f4", chunks=(1, 100, observation_dim))
+                else:
+                    obs_dset = h5train.file.create_dataset("observation", shape=(training_episodes, training_steps, observation_dim), dtype="f4")
+            
             else:
                 training_output_path = None
             comm.Barrier()
@@ -169,7 +211,6 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 obs = next_obs
             if rank == 0:
                 episode_rewards.append(ep_reward)
-                LOGGER.info("Training Episode %d reward %.6f", ep + 1, ep_reward)
                 if ep_reward > best_reward: # 
                     best_reward = ep_reward
                     agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), "best") # Saves network parameters of the best performing episode
@@ -210,10 +251,10 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 time_dset = h5eval.file.create_dataset("time", shape=(eval_episodes, eval_steps), dtype="f4")
                 amp_dset = h5eval.file.create_dataset("amplitude", shape=(eval_episodes, eval_steps), dtype="f4")
                 reward_dset = h5eval.file.create_dataset("reward", shape=(eval_episodes, eval_steps), dtype="f4")
-                obs_dset = h5eval.file.create_dataset(
-                    "observation", shape=(eval_episodes, eval_steps, observation_dim), dtype="f4"
-                )            
-            
+                if env.config.jet.jet_params["eval_max_steps"] > 100:
+                    obs_dset = h5eval.file.create_dataset("observation", shape=(eval_episodes, eval_steps, observation_dim), dtype="f4", chunks=(1, 100, observation_dim))  
+                else:
+                    obs_dset = h5eval.file.create_dataset("observation", shape=(eval_episodes, eval_steps, observation_dim), dtype="f4")
                 base_fields_dir = eval_output_path.parent.parent / "LB_EvalData"
                 if base_fields_dir.exists():
                     shutil.rmtree(base_fields_dir)  # Remove the directory and all its contents
@@ -273,8 +314,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
             if write_eval:
                 comm.Barrier()
                 env.close_h5_io()
-            if rank == 0:
-                LOGGER.info("Eval Episode %d reward %.6f", ep + 1, ep_reward)
+                
         if write_eval:
             comm.Barrier()
             if rank == 0 and h5eval is not None:
@@ -290,17 +330,14 @@ elif env.config.jet.jet_method_name == "LearningBased":
         parser.add_argument("--checkpoint", type=Path,
                             help="path to checkpoint to load for evaluation")
         args = parser.parse_args()
-        
-        # setup_logging()
 
     # Generate random number via torch. Not used now but present for future restart use.
     torch.manual_seed(env.config.jet.jet_params["seed"])
     np.random.seed(env.config.jet.jet_params["seed"])
 
-    # Use GPU if available. Currently only used for open-loop control
+    # Use GPU if available.
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # env = StreamsGymEnv() # Import Streams Gym Environment
     state_dim = env.observation_space.shape[0] # Collect the state dimension (tau x, equal to x grid dim)
     action_dim = env.action_space.shape[0] # Collect the action dimension (integer valued jet amplitude)
     max_action = float(env.action_space.high[0]) # Specified in justfile
@@ -309,17 +346,12 @@ elif env.config.jet.jet_method_name == "LearningBased":
         print(f'state_dim: {state_dim}')
         print(f'action_dim: {action_dim}')
         print(f'max_action: {max_action}')
+        print(f"Using device: {device} (CUDA available: {torch.cuda.is_available()})")
     
     strategy = env.config.jet.jet_strategy_name
     module_path = f"Control.{strategy}"
     agent_module = importlib.import_module(module_path)
     agent_class = getattr(agent_module, "agent")
-
-    # include all parameters required for the initialization of any LearningBased agent 
-    # Note to self: Consider collapsing all learning-based structs into one single struct with default values and let Python
-    # initialize an algorithm based on the match method below. 
-    # Pros: Simpler Rust code and edit, less redundancy, and less frequent Rust edits. 
-    # Cons: Giant Rust struct and json file when scaled up, and less informative Rust errors and help function. 
     
     # Clear the checkpoints directory before training runs, but not evaluation runs 
     checkpoint_dir = Path(env.config.jet.jet_params.get("checkpoint_dir"))
@@ -339,7 +371,6 @@ elif env.config.jet.jet_method_name == "LearningBased":
         env.comm.Barrier()
     
     agent_kwargs = {
-        # "checkpoint_dir": env.config.jet.jet_params.get("checkpoint_dir"),
         "checkpoint_dir": str(checkpoint_dir),
         "hidden_width": env.config.jet.jet_params.get("hidden_width"),
         "buffer_size": env.config.jet.jet_params.get("buffer_size"),
@@ -374,5 +405,6 @@ elif env.config.jet.jet_method_name == "LearningBased":
     env.close()
 
 else:
-    print(f'blowing_bc is set to {env.config.jet.jet_method_name}.')
-    print("blowing_bc must be set to None, OpenLoop, Classical, or LearningBased")
+    if env.rank == 0:
+        print(f'blowing_bc is set to {env.config.jet.jet_method_name}.')
+        print("blowing_bc must be set to None, OpenLoop, Classical, or LearningBased")

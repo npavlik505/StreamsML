@@ -495,6 +495,21 @@ pub(crate) struct DdpgArgs {
     #[clap(long)]
     pub(crate) slot_end: usize,
     
+    #[clap(long, default_value = "u")] 
+    pub(crate) obs_type: String,
+
+    #[clap(long)]
+    pub(crate) obs_xstart: usize,
+    
+    #[clap(long)]
+    pub(crate) obs_xend: usize,
+
+    #[clap(long)]
+    pub(crate) obs_ystart: usize,
+    
+    #[clap(long)]
+    pub(crate) obs_yend: usize,
+    
     #[clap(long, default_value_t = 1.0)] 
     pub(crate) amplitude: f64,
 
@@ -549,6 +564,21 @@ pub(crate) struct DqnArgs {
 
     #[clap(long)]
     pub(crate) slot_end: usize,
+    
+    #[clap(long, default_value = "u")] 
+    pub(crate) obs_type: String,
+
+    #[clap(long)]
+    pub(crate) obs_xstart: usize,
+    
+    #[clap(long)]
+    pub(crate) obs_xend: usize,
+
+    #[clap(long)]
+    pub(crate) obs_ystart: usize,
+    
+    #[clap(long)]
+    pub(crate) obs_yend: usize,
     
     #[clap(long, default_value_t = 1.0)] 
     pub(crate) amplitude: f64,
@@ -610,6 +640,21 @@ pub(crate) struct PpoArgs {
 
     #[clap(long)]
     pub(crate) slot_end: usize,
+    
+    #[clap(long, default_value = "u")] 
+    pub(crate) obs_type: String,
+
+    #[clap(long)]
+    pub(crate) obs_xstart: usize,
+    
+    #[clap(long)]
+    pub(crate) obs_xend: usize,
+
+    #[clap(long)]
+    pub(crate) obs_ystart: usize,
+    
+    #[clap(long)]
+    pub(crate) obs_yend: usize,
     
     #[clap(long, default_value_t = 1.0)] 
     pub(crate) amplitude: f64,

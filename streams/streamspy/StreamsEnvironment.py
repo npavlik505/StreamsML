@@ -78,29 +78,93 @@ class StreamsGymEnv(gymnasium.Env):
         # ``tauw_shape`` is the number of wall points owned by this MPI rank.
         # The global observation is assembled by gathering data from all ranks in `reset` and `step`.
         self.tauw_shape = streams.wrap_get_tauw_x_shape()
-        # Shape of the span‑averaged streamwise velocity over the slot.
-        # ``wrap_get_uoverslot_shape`` returns the local slice owned by this
-        # MPI rank.  The global observation is assembled via ``allgather`` in
-        # :meth:`reset` and :meth:`step`.
-        u1, u2 = streams.wrap_get_uoverslot_shape()
-        self.uoverslot_shape = (u1, u2)
-        # Some MPI ranks may not intersect the slot and thus own zero cells.
-        # Record whether this rank actually holds data for the span-averaged
-        # velocity.  Accessing Fortran arrays with a zero extent would trigger
-        # runtime errors, so we skip such calls and later gather empty arrays
-        # from those ranks.
-        self._has_uoverslot = (u1 > 0 and u2 > 0)
         
-        # ``wrap_get_uoverslot_shape`` returns the local dimensions of the
-        # span‑averaged velocity array owned by this MPI rank.  The global
-        # observation is built by gathering the local slices from all ranks in
-        # :meth:`reset` and :meth:`step`.  Compute the total size of the global
-        # observation by summing the local sizes across all ranks.
-        local_obs_size = u1 * u2
+        # Note the index (first column) is used for Fortran and is therefore 1-based not 0-based
+        obs_types = {
+            "rho":        (1, 0.0,     10.0),
+            "u":          (2, -3e3,    3e3),
+            "v":          (3, -3e3,    3e3),
+            "w":          (4, -3e3,    3e3),
+            "p":          (5, 0.0,     1e7),
+            "T":          (6, 50.0,    5e3),
+            "rho_sqrd":   (7, 0.0,     1e2),
+            "u_sqrd":     (8, 0.0,     9e6),
+            "v_sqrd":     (9, 0.0,     9e6),
+            "w_sqrd":     (10, 0.0,     9e6),
+            "p_sqrd":     (11, 0.0,    1e14),
+            "T_sqrd":     (12, 2.5e3,  2.5e7),
+            "rhou":       (13, -3e4,   3e4),
+            "rhov":       (14, -3e4,   3e4),
+            "rhow":       (15, -3e4,   3e4),
+            "rhou_sqrd":  (16, 0.0,    9e7),   # ⟨ρ u²⟩
+            "rhov_sqrd":  (17, 0.0,    9e7),   # ⟨ρ v²⟩
+            "rhow_sqrd":  (18, 0.0,    9e7),   # ⟨ρ w²⟩
+            "rhouv":      (19, -9e7,   9e7),
+            "dyn_visc":   (20, 1e-6,   1e-3)
+        }
+        jet_params = self.config.jet.jet_params
+        obs_key = jet_params["obs_type"]
+        result = obs_types.get(obs_key)
+        if result is None:
+            valid = ", ".join(obs_types.keys())
+            raise ValueError(f"obs_type '{obs_key} not valid. Choose one of: {valid}")
+        self._obs_index, min_val, max_val = result
+        if self.rank == 0:
+            print(f"Obs consists of {obs_key} data -> index {self._obs_index}, range [{min_val}, {max_val}]")
+
+        self._obs_xstart = int(jet_params["obs_xstart"])
+        self._obs_xend = int(jet_params["obs_xend"])
+        self._obs_ystart = int(jet_params["obs_ystart"])
+        self._obs_yend = int(jet_params["obs_yend"])
+        if self.rank == 0:
+            print(f"Obs space,  X: {self._obs_xstart} to {self._obs_xend} | Y: {self._obs_ystart} to {self._obs_yend}")
+
+        ## Determine the local slice shape to size the observation space.  The
+        ## first dimension is the variable index and has length one, so only the
+        ## spatial extents are relevant.
+        #sample_slice = streams.wrap_get_w_avzg_slice(
+        #    self._obs_xstart,
+        #    self._obs_xend,
+        #    self._obs_ystart,
+        #    self._obs_yend,
+        #    self._obs_index,
+        #)
+        
+        # Determine the portion of the observation window owned by this MPI
+        # rank.  Ranks whose local domain does not intersect the requested
+        # region return an empty slice.
+        nx_local = self.config.nx_mpi()
+        global_x_start = self.rank * nx_local + 1
+        global_x_end = global_x_start + nx_local - 1
+        self._local_xstart = max(self._obs_xstart, global_x_start)
+        self._local_xend = min(self._obs_xend, global_x_end)
+        self._local_ystart = max(self._obs_ystart, 1)
+        self._local_yend = min(self._obs_yend, self.config.grid.ny)
+        self._has_values = (
+            self._local_xstart <= self._local_xend
+            and self._local_ystart <= self._local_yend
+        )        
+        
+        #d1size, d2size = sample_slice.shape[1:3]
+        #self._has_values = (d1size > 0 and d2size > 0)
+        
+        if self._has_values:
+            sample_slice = streams.wrap_get_w_avzg_slice(
+                self._local_xstart,
+                self._local_xend,
+                self._local_ystart,
+                self._local_yend,
+                self._obs_index,
+            )
+            d1size, d2size = sample_slice.shape[1:3]
+        else:
+            d1size = d2size = 0
+        
+        local_obs_size = d1size * d2size
         global_obs_size = self.comm.allreduce(local_obs_size)
         self._global_obs_size = global_obs_size
         
-        w1, w2, w3, w4  = streams.wrap_get_w_shape() # conservative vector (rho, rho-u, rho-v, rho-w, E)
+        w1, w2, w3, w4  = streams.wrap_get_w_shape() # conservative vector (x, y, z, (rho, rho-u, rho-v, rho-w, E))
         self.w_shape   = (w1, w2, w3, w4)
         
         # Define the observation_space as config.grid.nx, the number of grid points in the x (streamwise) direction
@@ -130,21 +194,13 @@ class StreamsGymEnv(gymnasium.Env):
             #
             # BEGIN DEVELOPER SECTION: DEFINE YOUR OBSERVATION SPACE
             #
-            # Observation Space (Determine what resonable bounds are)
-            
-            # # Observation = τw(x) ∈ R^{nx}.  We bound it loosely between [-100, +100] per point.
-            # high_obs = np.full((self.nx,), 100.0, dtype=np.float32)
-            # self.observation_space = spaces.Box(low=-high_obs,
-            #                                     high=+high_obs,
-            #                                     shape=(self.nx,),
-            #                                     dtype=np.float32)
-
-            # Observation = Flattened span-averaged U velocity over the slot.
+            # Observation Space: Reasonable bounds defined in obs_types dict above. Flattened ROI as shape.
             global_obs_size = self._global_obs_size
-            high_obs = np.full((global_obs_size,), 2100.0, dtype=np.float32)
+            low_obs = np.full((global_obs_size,), min_val, dtype=np.float32)
+            high_obs = np.full((global_obs_size,), max_val, dtype=np.float32)
             self.observation_space = spaces.Box(
-                                                low=-high_obs,
-                                                high=+high_obs,
+                                                low=low_obs,
+                                                high=high_obs,
                                                 shape=(global_obs_size,),
                                                 dtype=np.float32)
             
@@ -287,34 +343,28 @@ class StreamsGymEnv(gymnasium.Env):
         #
         # BEGIN DEVELOPER SECTION: RETURN YOUR INITIAL OBSERVATION
         #
-        # Immediately compute tau on the new solver (no time steps taken yet)
-        # streams.wrap_copy_gpu_to_cpu() # bring everything from GPU to CPU
-        # streams.wrap_tauw_calculate() # ask Fortran to compute τau(x) on the CPU
-        # tau = streams.wrap_get_tauw_x(self.tauw_shape)
-        # self._tauw_buffer[:] = tau  # temporary tau storage
-        
-        # # Gather τ_w from all MPI ranks
-        # all_tau = self.comm.allgather(self._tauw_buffer)
-        # tau_global = np.concatenate(all_tau)
-
-        # # Reset counters
-        # self.step_count = 0
-        # self.current_time = 0.0
-
-        # # Gym expects a float32 array
-        # return tau_global.astype(np.float32)
-        
-        # Immediately compute the span‑averaged velocity on the new solver
-        # (no time steps taken yet)
+        # Immediately compute the span‑averaged conservative variables on the new solver (no time steps taken yet).
         streams.wrap_copy_gpu_to_cpu()  # bring everything from GPU to CPU
-        streams.wrap_uoverslot_collect()
-        if self._has_uoverslot:
-            local_u = streams.wrap_get_uoverslot(*self.uoverslot_shape)
+        streams.wrap_compute_av() # update the w_avzg
+        if self._has_values:
+            local_slice = streams.wrap_get_w_avzg_slice(
+                #self._obs_xstart,
+                #self._obs_xend,
+                #self._obs_ystart,
+                #self._obs_yend,
+                self._local_xstart,
+                self._local_xend,
+                self._local_ystart,
+                self._local_yend,                
+                self._obs_index,
+            )
+            local_slice = np.ravel(local_slice)
         else:
-            local_u = np.empty((0,), dtype=np.float32)
+            local_slice = np.empty((0,), dtype=np.float32)
 
-        # Gather U values from all MPI ranks and flatten, ignoring empty slices
-        u_global = self._gather_nonempty(local_u)
+        # Gather observation values from all MPI ranks and flatten, ignoring
+        # empty slices
+        u_global = self._gather_nonempty(local_slice)
 
         # Reset counters
         self.step_count = 0
@@ -323,7 +373,6 @@ class StreamsGymEnv(gymnasium.Env):
         self.action_queue.clear()
 
         # Gym expects a float32 array
-        # return tau_global.astype(np.float32) 
         return u_global.astype(np.float32)
         #
         # END DEVELOPER SECTION: RETURN YOUR INITIAL OBSERVATION
@@ -357,8 +406,8 @@ class StreamsGymEnv(gymnasium.Env):
         # BEGIN DEVELOPER SECTION: COLLECT YOUR OBSERVATION FROM STREAmS, DEFINE YOUR REWARD
         #
         streams.wrap_copy_gpu_to_cpu()
+        streams.wrap_compute_av()
         streams.wrap_tauw_calculate()
-        streams.wrap_uoverslot_collect()
 
         # Track actions with an eligibility trace to delay rewards
         self.action_queue.append({"eligibility": 1.0, "accum_reward": 0.0})
@@ -380,19 +429,30 @@ class StreamsGymEnv(gymnasium.Env):
         else:
             reward = 0.0
 
-        # Observation: span‑averaged U over slot
-        if self._has_uoverslot:
-            local_u = streams.wrap_get_uoverslot(*self.uoverslot_shape)
+        # Observation: span‑averaged conservative variables over the user
+        # specified window
+        if self._has_values:
+            local_slice = streams.wrap_get_w_avzg_slice(
+                #self._obs_xstart,
+                #self._obs_xend,
+                #self._obs_ystart,
+                #self._obs_yend,
+                self._local_xstart,
+                self._local_xend,
+                self._local_ystart,
+                self._local_yend,
+                self._obs_index,
+            )
+            local_slice = np.ravel(local_slice)
         else:
-            local_u = np.empty((0,), dtype=np.float32)
-        u_global = self._gather_nonempty(local_u)
+            local_slice = np.empty((0,), dtype=np.float32)
+        u_global = self._gather_nonempty(local_slice)
 
         # Termination: After `max_episode_steps` steps, done=True
         self.step_count += 1
         done = (self.step_count >= self.max_episode_steps)
 
         # Required Gym Stats:  (obs, reward, done, info)
-        # obs = tau_global.astype(np.float32)
         obs = u_global.astype(np.float32)
         
         #
@@ -421,11 +481,6 @@ class StreamsGymEnv(gymnasium.Env):
         self._energy_array = np.zeros(1)
 
         # Open HDF5 files
-        # self.flowfields = io_utils.IoFile(directory / "flowfields.h5")
-        # self.span_averages = io_utils.IoFile(directory / "span_averages.h5")
-        # self.trajectories = io_utils.IoFile(directory / "trajectories.h5")
-        # self.mesh_h5 = io_utils.IoFile(directory / "mesh.h5")
-        
         # May have to add conditional if eval loop can't be parallelized
         self.flowfields = io_utils.IoFile(Path(directory) / "flowfields.h5", comm=self.comm)
         self.span_averages = io_utils.IoFile(Path(directory) / "span_averages.h5", comm=self.comm)

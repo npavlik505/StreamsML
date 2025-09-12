@@ -1,6 +1,7 @@
 use crate::prelude::*;
 use cli::ConfigGenerator;
 use cli::FlowType;
+use cli::JetMethod;
 
 #[derive(thiserror::Error, Debug, From)]
 pub(crate) enum ConfigError {
@@ -350,6 +351,35 @@ impl Config {
                 self.probe_locations_x.len(),
                 self.probe_locations_z.len(),
             )));
+        }
+        
+        // ensure observation window is within the domain
+        if matches!(self.blowing_bc.method, JetMethod::LearningBased) {
+            if let (Some(xs), Some(xe), Some(ys), Some(ye)) = (
+                self.blowing_bc.params.get("obs_xstart").and_then(|v| v.as_u64()),
+                self.blowing_bc.params.get("obs_xend").and_then(|v| v.as_u64()),
+                self.blowing_bc.params.get("obs_ystart").and_then(|v| v.as_u64()),
+                self.blowing_bc.params.get("obs_yend").and_then(|v| v.as_u64()),
+            ) {
+                let xs = xs as usize;
+                let xe = xe as usize;
+                let ys = ys as usize;
+                let ye = ye as usize;
+
+                if xs < 1 || xe < 1 || xs > self.x_divisions || xe > self.x_divisions {
+                    return Err(ConfigError::Custom(format!(
+                        "obs-xstart ({xs}) and obs-xend ({xe}) must be between 1 and x_divisions ({})",
+                        self.x_divisions
+                    )));
+                }
+
+                if ys < 1 || ye < 1 || ys > self.y_divisions || ye > self.y_divisions {
+                    return Err(ConfigError::Custom(format!(
+                        "obs-ystart ({ys}) and obs-yend ({ye}) must be between 1 and y_divisions ({})",
+                        self.y_divisions
+                    )));
+                }
+            }
         }
 
         Ok(())
