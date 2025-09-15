@@ -74,7 +74,7 @@ config:
 		--use-python \
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
-		learning-based ddpg \
+		classical opp \
 		    --slot-start 100 \
 		    --slot-end 149 \
 		    --obs-type v \
@@ -82,19 +82,8 @@ config:
 		    --obs-xend 50 \
 		    --obs-ystart 1 \
 		    --obs-yend 50 \
-		    --train-episodes 1 \
-		    --training-output {{training}} \
-		    --eval-episodes 1 \
-		    --eval-max-steps 55 \
-		    --eval-output {{eval}} \
-		    --checkpoint-interval 5 \
-		    --checkpoint-dir {{checkpoint}} \
-		    --seed 42 \
-		    --amplitude 1.0 \
-		    --learning-rate 0.0003 \
-		    --gamma 0.99 \
-		    --tau 0.005 \
-		    --buffer-size 100000
+		    --organized-motion LSM \
+		    --gain 1.0 \
 
 	cat {{config_output}}
 	

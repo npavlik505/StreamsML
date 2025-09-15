@@ -64,17 +64,12 @@ class agent(BaseAgent):
         action_dim = env.action_space.shape[0]
         max_action = float(env.action_space.high[0])
         hidden_width = params.get("hidden_width")
-        batch_size = params.get("batch_size")
         lr = params.get("learning_rate")
-        GAMMA = params.get("gamma")
-        eps_clip = params.get("eps_clip")
-        K_epochs = params.get("K_epochs")
-        checkpoint_dir = params.get("checkpoint_dir")
     
-        self.batch_size = batch_size
-        self.gamma = GAMMA
-        self.eps_clip = eps_clip
-        self.K_epochs = K_epochs
+        self.batch_size = params.get("batch_size")
+        self.gamma = params.get("gamma")
+        self.eps_clip = params.get("eps_clip")
+        self.K_epochs = params.get("K_epochs")
 
         self.policy = ActorCritic(state_dim, action_dim, hidden_width, max_action)
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr)
@@ -83,7 +78,7 @@ class agent(BaseAgent):
 
         # self.run_timestamp = time.strftime("%Y%m%d.%H%M%S")
         # self.run_name = self.run_timestamp
-        self.checkpoint = checkpoint_dir
+        self.checkpoint = params.get("checkpoint_dir")
         
         self.initialize_networks()
 

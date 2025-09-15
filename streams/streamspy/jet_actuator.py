@@ -240,8 +240,11 @@ def init_actuator(rank: int, config: Config) -> AbstractActuator:
             pass
     
     elif jet_config.jet_method_name == "Classical":
-        print('No classical control algorithms yet')
-        exit()
+        if jet_config.jet_strategy_name in ("opp"):
+            slot_start = jet_config.jet_params["slot_start"]
+            slot_end = jet_config.jet_params["slot_end"]
+            amplitude = jet_config.jet_params["amplitude"]
+            return AdaptiveActuator(amplitude, slot_start, slot_end, rank, config);
     
     elif jet_config.jet_method_name == "LearningBased":
         if jet_config.jet_strategy_name in ("ddpg", "dqn","ppo"):

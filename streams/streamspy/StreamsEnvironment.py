@@ -109,6 +109,12 @@ class StreamsGymEnv(gymnasium.Env):
             valid = ", ".join(obs_types.keys())
             raise ValueError(f"obs_type '{obs_key} not valid. Choose one of: {valid}")
         self._obs_index, min_val, max_val = result
+        
+        # Store observation bounds so they can be reused when the observation
+        # window is recomputed programmatically after initialization.
+        self._obs_min_val = min_val
+        self._obs_max_val = max_val
+        
         if self.rank == 0:
             print(f"Obs consists of {obs_key} data -> index {self._obs_index}, range [{min_val}, {max_val}]")
 
@@ -220,7 +226,6 @@ class StreamsGymEnv(gymnasium.Env):
         self.step_count = 0
         self.max_episode_steps = int(self.config.temporal.num_iter)
         self.current_time = 0.0
-        self.action_queue = deque()
 
         # Parameters for delayed reward via eligibility traces
         # "lag_steps" controls how many steps elapse before credit is assigned to an action.
@@ -237,6 +242,69 @@ class StreamsGymEnv(gymnasium.Env):
             print(f'max_episode_steps (--steps in justfile): {self.max_episode_steps}')
             print(f'current_time: {self.current_time}')
 
+    # A helper function for the set_observation_window() method below, which dynamically resets the observation window
+    def recompute_obs(self) -> None:
+        """Recompute derived observation window values.
+
+        This is useful when ``_obs_xstart``/``_obs_xend``/``_obs_ystart``/
+        ``_obs_yend`` are modified programmatically after environment
+        creation.  The local slice indices, global observation size and the
+        ``observation_space`` are updated in-place so that a subsequent call to
+        :meth:`reset` reflects the new window.
+        """
+
+        nx_local = self.config.nx_mpi()
+        global_x_start = self.rank * nx_local + 1
+        global_x_end = global_x_start + nx_local - 1
+        self._local_xstart = max(self._obs_xstart, global_x_start)
+        self._local_xend = min(self._obs_xend, global_x_end)
+        self._local_ystart = max(self._obs_ystart, 1)
+        self._local_yend = min(self._obs_yend, self.config.grid.ny)
+        self._has_values = (
+            self._local_xstart <= self._local_xend
+            and self._local_ystart <= self._local_yend
+        )
+
+        if self._has_values:
+            sample_slice = streams.wrap_get_w_avzg_slice(
+                self._local_xstart,
+                self._local_xend,
+                self._local_ystart,
+                self._local_yend,
+                self._obs_index,
+            )
+            d1size, d2size = sample_slice.shape[1:3]
+        else:
+            d1size = d2size = 0
+
+        local_obs_size = d1size * d2size
+        self._global_obs_size = self.comm.allreduce(local_obs_size)
+
+        if hasattr(self, "observation_space"):
+            low_obs = np.full(
+                (self._global_obs_size,), self._obs_min_val, dtype=np.float32
+            )
+            high_obs = np.full(
+                (self._global_obs_size,), self._obs_max_val, dtype=np.float32
+            )
+            self.observation_space = spaces.Box(
+                low=low_obs,
+                high=high_obs,
+                shape=(self._global_obs_size,),
+                dtype=np.float32,
+            )
+
+    # Dynamically reset the observation window (useful for moving and morphing windows)
+    def set_observation_window(self, xstart: int, xend: int, ystart: int, yend: int) -> None:
+        """Override the observation bounds and recompute derived fields."""
+
+        self._obs_xstart = int(xstart)
+        self._obs_xend = int(xend)
+        self._obs_ystart = int(ystart)
+        self._obs_yend = int(yend)
+        self.recompute_obs()
+
+    # MPI helper function
     def _gather_nonempty(self, arr: np.ndarray) -> np.ndarray:
         """Gather 1D data from all ranks while skipping empty contributions.
 
@@ -259,7 +327,7 @@ class StreamsGymEnv(gymnasium.Env):
             return np.concatenate(non_empty)
         return np.empty(0, dtype=arr.dtype)
 
-    # setup_solver definition: initialized solver on first call, closes solver and reinits on subsequent calls
+    # setup_solver definition: initialized solver on first call, closes solver and reinits on subsequent calls. Used in reset method.
     def _setup_solver(self, *, restart_mpi: bool = False) -> None:
         """(Re)initialize the STREAmS solver.
 
@@ -348,10 +416,6 @@ class StreamsGymEnv(gymnasium.Env):
         streams.wrap_compute_av() # update the w_avzg
         if self._has_values:
             local_slice = streams.wrap_get_w_avzg_slice(
-                #self._obs_xstart,
-                #self._obs_xend,
-                #self._obs_ystart,
-                #self._obs_yend,
                 self._local_xstart,
                 self._local_xend,
                 self._local_ystart,
@@ -433,10 +497,6 @@ class StreamsGymEnv(gymnasium.Env):
         # specified window
         if self._has_values:
             local_slice = streams.wrap_get_w_avzg_slice(
-                #self._obs_xstart,
-                #self._obs_xend,
-                #self._obs_ystart,
-                #self._obs_yend,
                 self._local_xstart,
                 self._local_xend,
                 self._local_ystart,
@@ -467,9 +527,7 @@ class StreamsGymEnv(gymnasium.Env):
         }
         return obs, reward, done, info
 
-    # ------------------------------------------------------------------
-    # HDF5 output helpers (called from main.py)
-    # ------------------------------------------------------------------
+    # HDF5 output helpers (called from main.py). Three methods that creat, write to, and close h5 files, respectively.
     def init_h5_io(self, directory) -> None:
         """Create HDF5 files and datasets used for diagnostics."""
         import io_utils  # imported here to avoid modifying global imports

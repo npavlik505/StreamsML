@@ -2,6 +2,7 @@ use crate::prelude::*;
 use clap::Parser;
 use clap::Subcommand;
 use clap::ValueEnum;
+use clap::Args as ClapArgs;
 use std::path::PathBuf;
 
 /// utilities for working with the streams solver
@@ -373,10 +374,10 @@ impl From<JetActuatorCli> for JetActuator {
                        strategy: "ppo".into(),
                        params: serde_json::to_value(a).unwrap() },
 
-            // ---------- classical placeholder ----------
-            JetActuatorCli::Classical(ClassicalActuator::Placeholder(a)) =>
+            // ---------- classical ----------
+            JetActuatorCli::Classical(ClassicalActuator::Opp(a)) =>
                 Self { method: Classical,
-                       strategy: "placeholder".into(),
+                       strategy: "opp".into(),
                        params: serde_json::to_value(a).unwrap() },
         }
     }
@@ -463,15 +464,42 @@ pub(crate) struct DMDcArgs {
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
 #[clap(rename_all = "lower")]
 pub(crate) enum ClassicalActuator {
-    // (nothing yet – placeholder so the syntax is valid)
-    #[clap(name = "placeholder")]
-    Placeholder(PlaceholderArgs),
+    /// Opposition control
+    Opp(OppArgs),
 }
-#[derive(Parser, Debug, Clone, Serialize, Deserialize)]
-/// Fields that are configurable but standard for most learning based control strategies 
-pub(crate) struct PlaceholderArgs {
-    #[clap(name = "placeholderargs")]
-    pub(crate) PlaceholderArg: String,
+
+#[derive(ClapArgs, Debug, Clone, Serialize, Deserialize)]
+/// Fields that are configurable opposition control
+pub(crate) struct OppArgs {
+    #[clap(long)]
+    pub(crate) slot_start: usize,
+
+    #[clap(long)]
+    pub(crate) slot_end: usize,
+    
+    #[clap(long, default_value = "u")] 
+    pub(crate) obs_type: String,
+
+    #[clap(long)]
+    pub(crate) obs_xstart: usize,
+    
+    #[clap(long)]
+    pub(crate) obs_xend: usize,
+
+    #[clap(long)]
+    pub(crate) obs_ystart: usize,
+    
+    #[clap(long)]
+    pub(crate) obs_yend: usize,
+    
+    #[clap(long, default_value = "unspecified")] 
+    pub(crate) organized_motion: String,
+    
+    #[clap(long, default_value_t = 1.0)] 
+    pub(crate) gain: f64,
+    
+    #[clap(long, default_value_t = 1.0)] 
+    pub(crate) amplitude: f64,
 }
 
 // JET ACTUATOR: LearningBased Actuator Parameters

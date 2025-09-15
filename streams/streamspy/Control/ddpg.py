@@ -108,19 +108,13 @@ class agent(BaseAgent):
         state_dim = env.observation_space.shape[0]
         action_dim = env.action_space.shape[0]
         max_action = float(env.action_space.high[0])
-        hidden_width = params.get("hidden_width")
-        buffer_size = params.get("buffer_size")
-        batch_size = params.get("batch_size")
-        lr = params.get("learning_rate")
-        GAMMA = params.get("gamma")
-        TAU = params.get("tau")
-        checkpoint_dir = params.get("checkpoint_dir")    
+        buffer_size = params.get("buffer_size")  
     
-        self.hidden_width = hidden_width  # The number of neurons in hidden layers of the neural network
-        self.batch_size = batch_size  # batch size
-        self.GAMMA = GAMMA  # discount factor
-        self.TAU = TAU  # Softly update the target network
-        self.lr = lr  # learning rate
+        self.hidden_width = params.get("hidden_width")  # The number of neurons in hidden layers of the neural network
+        self.batch_size = params.get("batch_size")  # batch size
+        self.GAMMA = params.get("gamma")  # discount factor
+        self.TAU = params.get("tau")  # Softly update the target network
+        self.lr = params.get("learning_rate")  # learning rate
 
         self.actor = Actor(state_dim, action_dim, self.hidden_width, max_action)
         self.actor_target = copy.deepcopy(self.actor)
@@ -133,7 +127,7 @@ class agent(BaseAgent):
 
         # self.run_timestamp = time.strftime("%Y%m%d.%H%M%S")
         # self.run_name = self.run_timestamp
-        self.checkpoint = checkpoint_dir
+        self.checkpoint = params.get("checkpoint_dir")  
 
         self.initialize_networks()
 
