@@ -45,7 +45,6 @@ checkpoint_tag := "best"
 # build a config json file as input to the solver
 config_output := "$STREAMS_DIR/streamspy/output/input.json"
 
-
 config:
 	# create output directory if it does not exist
 	test -d {{results_dir}} || mkdir -p {{results_dir}}
@@ -80,9 +79,9 @@ config:
 		    --obs-type v \
 		    --sensor-actuator-delay \
 		    --obs-xstart 1 \
-		    --obs-xend 60 \
+		    --obs-xend 50 \
 		    --obs-ystart 1 \
-		    --obs-yend 10 \
+		    --obs-yend 50 \
 		    --lag-steps 100 \
 		    --train-episodes 2 \
 		    --training-output {{training}} \
@@ -99,7 +98,6 @@ config:
 		    --buffer-size 100000
 
 	cat {{config_output}}
-
 	
 run:
 	cargo r -- run-local \

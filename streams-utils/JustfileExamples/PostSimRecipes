@@ -1,0 +1,56 @@
+Note that all of these recipes do not use the streams.sif container, and therefore rely on local package installs
+
+# analysis, DMD or POD (only analysis-method flag differs)
+analysis:
+        python3 $STREAMS_DIR/streamspy/Analysis/analysis_main.py \
+                --results_dir {{results_dir}} \
+                --episode-tag ep_0000 \
+                --analysis-method DMD \
+
+# analysis, pysensors
+analysis:
+         python3 $STREAMS_DIR/streamspy/Analysis/analysis_main.py \
+                 --results_dir {{results_dir}} \
+                 --episode-tag ep_0000 \
+                 --analysis-method pysensors \
+                 --num-sensors 6 \
+           
+# visualize, snapshot
+visualize: 
+        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
+                 --results_dir {{results_dir}} \
+                 --episode-tag ep_0000 \
+                 --vis-type snapshot \
+                 --snapshot-number 99 \
+                 --variable w \
+
+# visualize, animation
+visualize:
+         python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
+                 --results_dir {{results_dir}} \
+                 --episode-tag ep_0000 \
+                 --vis-type animation \
+                 --variable w \
+
+# visualize, rl_metrics (reinforcement learning metrics - plots mean-centered reward and actuation against time)           
+visualize:
+        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
+                --results_dir {{results_dir}} \
+                --episode-tag ep_0000 \
+                --vis-type rl_metrics
+
+# visualize, sa_data (span_averaged data - plots integral wall shear stress, dissipation rate, and energy against time)
+visualize:
+        python3 $STREAMS_DIR/streamspy/Visualize/visualize_main.py \
+                --results_dir {{results_dir}} \
+                --episode-tag ep_0000 \
+                --vis-type sa_data \
+
+# model, dmdc (dmdc produces the A and B matrices of the linearized model, energy is the energy to remain modeled after reduction, error measurements between FOM and ROM are also returned. Note, presumably works best when applied to dmdc simulation data)
+model:
+	python3 $STREAMS_DIR/streamspy/Modeling/modeling_main.py \
+		--results_dir {{results_dir}} \
+		--episode-tag ep_0000 \
+		--model-type dmdc \
+		--energy 100 \
+	
