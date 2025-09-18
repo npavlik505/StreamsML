@@ -70,6 +70,7 @@ config:
 		    --slot-start 100 \
 		    --slot-end 149 \
 		    --obs-type v \
+		    --sensor-actuator-delay \
 		    --obs-xstart 1 \
 		    --obs-xend 50 \
 		    --obs-ystart 1 \

@@ -158,6 +158,7 @@ class agent(BaseAgent):
         self.actuation_queue = deque()
         self.observation_queue = deque()
         self._skip_delay = False
+        self.sensor_actuator_delay = params.get("sensor_actuator_delay")
 
     def initialize_networks(self) -> None:
         # save_dir = f"{self.run_name}/Initial_Parameters"
@@ -220,7 +221,7 @@ class agent(BaseAgent):
                 print(f"delay will not be applied")
                 return _as_float(action), default_prev_obs, default_next_obs, False
             
-        if self._skip_delay:
+        if self._skip_delay or not self.sensor_actuator_delay:
             return _as_float(action), default_prev_obs, default_next_obs, False
             
         # enqueue the control action with zero accumulated convection

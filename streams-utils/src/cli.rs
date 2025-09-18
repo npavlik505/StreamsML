@@ -460,6 +460,7 @@ pub(crate) struct DMDcArgs {
 }
 
 // JET ACTUATOR: Classical Actuator Parameters
+
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
 #[clap(rename_all = "lower")]
 pub(crate) enum ClassicalActuator {
@@ -528,6 +529,9 @@ pub(crate) struct DdpgArgs {
     
     #[clap(long, default_value = "u")] 
     pub(crate) obs_type: String,
+
+    #[clap(long)]
+    pub(crate) sensor_actuator_delay: bool,
 
     #[clap(long)]
     pub(crate) obs_xstart: usize,
@@ -601,6 +605,9 @@ pub(crate) struct DqnArgs {
     
     #[clap(long, default_value = "u")] 
     pub(crate) obs_type: String,
+
+    #[clap(long)]
+    pub(crate) sensor_actuator_delay: bool,
 
     #[clap(long)]
     pub(crate) obs_xstart: usize,
@@ -680,6 +687,9 @@ pub(crate) struct PpoArgs {
     
     #[clap(long, default_value = "u")] 
     pub(crate) obs_type: String,
+
+    #[clap(long)]
+    pub(crate) sensor_actuator_delay: bool,
 
     #[clap(long)]
     pub(crate) obs_xstart: usize,

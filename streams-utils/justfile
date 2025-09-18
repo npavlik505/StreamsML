@@ -78,10 +78,11 @@ config:
 		    --slot-start 100 \
 		    --slot-end 149 \
 		    --obs-type v \
+		    --sensor-actuator-delay \
 		    --obs-xstart 1 \
-		    --obs-xend 50 \
+		    --obs-xend 60 \
 		    --obs-ystart 1 \
-		    --obs-yend 50 \
+		    --obs-yend 10 \
 		    --lag-steps 100 \
 		    --train-episodes 2 \
 		    --training-output {{training}} \

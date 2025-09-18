@@ -125,104 +125,6 @@ elif env.config.jet.jet_method_name == "LearningBased":
 
     STOP = False
 
-# This is the original training function. I am experimenting with a method to account for the delay between observation and actuation below
-# NOTE THAT ddpg.py has been modified to test the new method out as well. All edits there are marked #TEST
-    """
-    def train(env: StreamsGymEnv, agent) -> Path:
-        #Train agent and return path to best checkpoint.
-        comm = MPI.COMM_WORLD
-        rank = comm.rank
-        if rank == 0:
-            print(f'TRAINING')
-        
-        # print("[rl_control.py] Define reward objects")
-        best_reward = -float("inf")
-        episode_rewards = []
-        
-        best_path = Path(env.config.jet.jet_params["checkpoint_dir"]) / "best"
-        
-        # open output file for time, amp, reward, and obs in the training loop to be collected
-        write_training = env.config.jet.jet_params["training_output"] is not None
-        h5train = time_dset = amp_dset = reward_dset = obs_dset = None
-        if write_training:
-            if rank == 0:
-                # Define path, create directory and h5, gather data to allocate shape
-                training_output_path = Path(env.config.jet.jet_params["training_output"])
-                training_output_path.parent.mkdir(parents=True, exist_ok=True)
-                # h5train = io_utils.IoFile(str(training_output_path))
-                h5train = io_utils.IoFile(str(training_output_path), comm=None)
-                training_episodes = env.config.jet.jet_params["train_episodes"]
-                training_steps = env.max_episode_steps
-                observation_dim = env.observation_space.shape[0]
-                # Create datasets within the h5 file
-                time_dset = h5train.file.create_dataset("time", shape=(training_episodes, training_steps), dtype="f4")
-                amp_dset = h5train.file.create_dataset("amplitude", shape=(training_episodes, training_steps), dtype="f4")
-                reward_dset = h5train.file.create_dataset("reward", shape=(training_episodes, training_steps), dtype="f4")
-                # If max simulation steps are greater than 100, chunk the data
-                if env.config.temporal.num_iter > 100:
-                    obs_dset = h5train.file.create_dataset("observation", shape=(training_episodes, training_steps, observation_dim), dtype="f4", chunks=(1, 100, observation_dim))
-                else:
-                    obs_dset = h5train.file.create_dataset("observation", shape=(training_episodes, training_steps, observation_dim), dtype="f4")
-            
-            else:
-                training_output_path = None
-            comm.Barrier()
-                
-        for ep in range(env.config.jet.jet_params["train_episodes"]): #, disable=rank != 0):
-            if rank == 0:
-                print(f'Beginning of training episode {ep + 1}')
-            if STOP:
-                break
-            obs = env.reset()
-            done = False
-            ep_reward = 0.0
-            step = 0
-            sa_queue = deque()
-            while not done:
-                if rank == 0:
-                    obs_t = torch.tensor(obs, dtype=torch.float32)
-                    action = agent.choose_action(obs_t, step)
-                    action = agent.delay_action(action) # Delay action if desired
-                else:
-                    action = None
-                action = comm.bcast(action, root=0)
-                prev_obs = obs
-                next_obs, reward, done, info = env.step(action)
-                done = comm.bcast(done, root=0)
-                if rank == 0:
-                    sa_queue.append((prev_obs, action, next_obs, info["time"]))
-                    if len(sa_queue) > env.lag_steps:
-                        old_obs, old_action, old_next, old_time = sa_queue.popleft()
-                        ep_reward += reward
-                        agent.learn(old_obs, old_action, reward, old_next)
-                        if write_training:
-                            idx = step - env.lag_steps
-                            time_dset[ep, idx] = old_time
-                            amp_dset[ep, idx] = old_action
-                            reward_dset[ep, idx] = reward
-                            obs_dset[ep, idx, :] = old_obs
-                step += 1
-                obs = next_obs
-            if rank == 0:
-                episode_rewards.append(ep_reward)
-                if ep_reward > best_reward: # 
-                    best_reward = ep_reward
-                    agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), "best") # Saves network parameters of the best performing episode
-                if (ep + 1) % env.config.jet.jet_params["checkpoint_interval"] == 0:
-                    agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), f"ep{ep + 1}") # Saves network parameters every "checkpoint_dir" number of episodes
-        if rank == 0 and not STOP:
-            agent.save_checkpoint(Path(env.config.jet.jet_params["checkpoint_dir"]), "final")
-        if write_training:
-            comm.Barrier()
-            if rank == 0 and h5train is not None:
-                h5train.close()
-        # ep_dset.close()
-        # h5.close()
-        
-        return best_path
-    """
-
-# BEGIN TEST SECTION: This is the experimental method to account for the delay between observation and actuation
     def train(env: StreamsGymEnv, agent) -> Path:
         """Train agent and return path to best checkpoint."""
         comm = MPI.COMM_WORLD
@@ -322,16 +224,8 @@ elif env.config.jet.jet_method_name == "LearningBased":
             comm.Barrier()
             if rank == 0 and h5train is not None:
                 h5train.close()
-        # ep_dset.close()
-        # h5.close()
         
         return best_path
-# END TEST SECTION: This is the experimental method to account for the delay between observation and actuation
-
-
-
-
-
 
     def evaluate(env: StreamsGymEnv, agent, checkpoint: Path) -> None:
         """Run evaluation episodes using checkpoint."""
@@ -393,30 +287,42 @@ elif env.config.jet.jet_method_name == "LearningBased":
             step = 0
             ep_reward = 0.0
             sa_queue = deque()
+            def _to_numpy_copy(array_like):
+                if isinstance(array_like, torch.Tensor):
+                    return array_like.detach().cpu().numpy().copy()
+                return np.array(array_like, copy=True)            
             
             while not done and step < env.config.jet.jet_params["eval_max_steps"]:
                 if rank == 0:
-                    action = agent.choose_action(torch.tensor(obs, dtype=torch.float32), step)
-                    action = agent.delay_action(action)
+                    obs_array = _to_numpy_copy(obs)
+                    obs_tensor = torch.tensor(obs_array, dtype=torch.float32)
+                    raw_action = agent.choose_action(obs_tensor, step)
+                    actuation, obs_t, obs_t_next, convection_complete = agent.delay_action(raw_action, obs_tensor)
                 else:
-                    action = None
-                action = comm.bcast(action, root=0)
-                prev_obs = obs
-                obs, reward, done, info = env.step(action)
+                    actuation = None
+                actuation = comm.bcast(actuation, root=0)
+                obs, reward, done, info = env.step(actuation)
                 done = comm.bcast(done, root=0)
                 if write_eval:
-                    env.log_step_h5(action)
+                    env.log_step_h5(actuation)
                 if rank == 0:
-                    sa_queue.append((prev_obs, action, info["time"]))
+                    next_obs_array = _to_numpy_copy(obs)
+                    if convection_complete:
+                        delayed_obs = _to_numpy_copy(obs_t)
+                        delayed_next_obs = _to_numpy_copy(obs_t_next)
+                        sa_queue.append((delayed_obs, actuation, delayed_next_obs, info["time"]))
+                    else:
+                        sa_queue.append((obs_array, actuation, next_obs_array, info["time"]))
                     if len(sa_queue) > env.lag_steps:
-                        old_obs, old_action, old_time = sa_queue.popleft()
+                        old_obs, old_action, _, old_time = sa_queue.popleft()
+                        old_obs_np = _to_numpy_copy(old_obs)
                         ep_reward += reward
                         idx = step - env.lag_steps
                         if write_eval:
                             time_dset[ep, idx] = old_time
                             amp_dset[ep, idx] = old_action
                             reward_dset[ep, idx] = reward
-                            obs_dset[ep, idx, :] = old_obs
+                            obs_dset[ep, idx, :] = old_obs_np
                 step += 1
             if write_eval:
                 comm.Barrier()
