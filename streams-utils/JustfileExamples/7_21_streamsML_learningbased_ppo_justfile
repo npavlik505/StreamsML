@@ -39,6 +39,9 @@ training := "./RL_metrics/training"
 checkpoint := "./RL_metrics/checkpoint"
 
 config:
+	# create output directory if it does not exist
+	test -d {{results_dir}} || mkdir -p {{results_dir}}
+	
 	echo {{config_output}}
 
 	# 600, 208, 100
@@ -66,6 +69,12 @@ config:
 		learning-based ppo \
 		    --slot-start 100 \
 		    --slot-end 149 \
+		    --obs-type v \
+		    --obs-xstart 1 \
+		    --obs-xend 50 \
+		    --obs-ystart 1 \
+		    --obs-yend 50 \
+		    --lag-steps 100 \
 		    --train-episodes 2 \
 		    --training-output {{training}} \
 		    --eval-episodes 2 \

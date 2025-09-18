@@ -56,7 +56,7 @@ config:
 
 	cargo r -- \
 		config-generator {{config_output}} {{streams_flow_type}} \
-		--steps 6 \
+		--steps 55 \
 		--reynolds-number 250 \
 		--mach-number 2.28 \
 		--x-divisions 600 \
@@ -68,13 +68,13 @@ config:
 		--z-length 3.8 \
 		--rly-wr 2.5 \
 		--mpi-x-split 4 \
-		--span-average-io-steps 2 \
+		--span-average-io-steps 10 \
 		--probe-io-steps 0 \
 		--python-flowfield-steps 500 \
 		--use-python \
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
-		learning-based ddpg \
+		classical opp \
 		    --slot-start 100 \
 		    --slot-end 149 \
 		    --obs-type v \
@@ -82,23 +82,11 @@ config:
 		    --obs-xend 50 \
 		    --obs-ystart 1 \
 		    --obs-yend 50 \
-		    --lag-steps 100 \
-		    --train-episodes 2 \
-		    --training-output {{training}} \
-		    --eval-episodes 2 \
-		    --eval-max-steps 6 \
-		    --eval-output {{eval}} \
-		    --checkpoint-interval 5 \
-		    --checkpoint-dir {{checkpoint}} \
-		    --seed 42 \
-		    --amplitude 1.0 \
-		    --learning-rate 0.0003 \
-		    --gamma 0.99 \
-		    --tau 0.005 \
-		    --buffer-size 100000
+		    --organized-motion LSM \
+		    --gain 1.0 \
 
 	cat {{config_output}}
-
+	
 	
 run:
 	cargo r -- run-local \

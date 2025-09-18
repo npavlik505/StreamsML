@@ -381,6 +381,20 @@ impl Config {
                 }
             }
         }
+        
+        if let Some(lag_steps_value) = self.blowing_bc.params.get("lag_steps") {
+            let Some(lag_steps) = lag_steps_value.as_i64() else {
+                return Err(ConfigError::Custom(
+                    "lag-steps must be provided as an integer".to_string(),
+                ));
+            };
+
+            if lag_steps < 1 {
+                return Err(ConfigError::Custom(format!(
+                    "lag-steps ({lag_steps}) must be greater than or equal to 1"
+                )));
+            }
+        }
 
         Ok(())
     }

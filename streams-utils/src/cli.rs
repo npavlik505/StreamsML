@@ -460,7 +460,6 @@ pub(crate) struct DMDcArgs {
 }
 
 // JET ACTUATOR: Classical Actuator Parameters
-
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
 #[clap(rename_all = "lower")]
 pub(crate) enum ClassicalActuator {
@@ -468,7 +467,7 @@ pub(crate) enum ClassicalActuator {
     Opp(OppArgs),
 }
 
-#[derive(ClapArgs, Debug, Clone, Serialize, Deserialize)]
+#[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 /// Fields that are configurable opposition control
 pub(crate) struct OppArgs {
     #[clap(long)]
@@ -500,6 +499,9 @@ pub(crate) struct OppArgs {
     
     #[clap(long, default_value_t = 1.0)] 
     pub(crate) amplitude: f64,
+
+    #[clap(long, default_value_t = 1)]
+    pub(crate) lag_steps: usize,
 }
 
 // JET ACTUATOR: LearningBased Actuator Parameters
@@ -508,6 +510,7 @@ pub(crate) struct OppArgs {
 #[clap(rename_all = "lower")]
 pub(crate) enum LearningBasedActuator {
     /// Deep-determinstic policy gradient
+    
     Ddpg(DdpgArgs),
     /// Deep Q Network
     Dqn(DqnArgs),
@@ -540,6 +543,9 @@ pub(crate) struct DdpgArgs {
     
     #[clap(long, default_value_t = 1.0)] 
     pub(crate) amplitude: f64,
+
+    #[clap(long, default_value_t = 1)]
+    pub(crate) lag_steps: usize,
 
     #[clap(long, default_value_t = 10)]
     pub(crate) train_episodes: usize,
@@ -610,6 +616,9 @@ pub(crate) struct DqnArgs {
     
     #[clap(long, default_value_t = 1.0)] 
     pub(crate) amplitude: f64,
+
+    #[clap(long, default_value_t = 1)]
+    pub(crate) lag_steps: usize,
 
     #[clap(long, default_value_t = 10)]
     pub(crate) train_episodes: usize,
@@ -686,6 +695,9 @@ pub(crate) struct PpoArgs {
     
     #[clap(long, default_value_t = 1.0)] 
     pub(crate) amplitude: f64,
+
+    #[clap(long, default_value_t = 1)]
+    pub(crate) lag_steps: usize,
 
     #[clap(long, default_value_t = 10)]
     pub(crate) train_episodes: usize,

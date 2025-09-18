@@ -19,8 +19,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import time
 import inspect
+from collections import deque
 
 from streamspy.base_LearningBased import BaseAgent
+import libstreams as streams
 
 #Define actor and critic NN.
 # Actor produces single action; The state is inputed, the action is out made continuous by multiplying max acion with tanh(NN output)
@@ -108,7 +110,19 @@ class agent(BaseAgent):
         state_dim = env.observation_space.shape[0]
         action_dim = env.action_space.shape[0]
         max_action = float(env.action_space.high[0])
-        buffer_size = params.get("buffer_size")  
+        buffer_size = params.get("buffer_size")
+        self.sensor_start = params.get("obs_xstart")
+        self.sensor_end = params.get("obs_xend")
+        self.slot_start = params.get("slot_start") 
+        self.slot_end = params.get("slot_end")
+
+        # grid parameters
+        self.nx = env.config.grid.nx
+        self.ny = env.config.grid.ny
+        
+        #length parameters
+        self.lx = env.config.length.lx
+        self.ly = env.config.length.ly
     
         self.hidden_width = params.get("hidden_width")  # The number of neurons in hidden layers of the neural network
         self.batch_size = params.get("batch_size")  # batch size
@@ -137,6 +151,13 @@ class agent(BaseAgent):
         self.MseLoss = nn.MSELoss()
         
         self.add_noise = True 
+        
+        self.mach = env.config.physics.mach
+        
+        self.env = env
+        self.actuation_queue = deque()
+        self.observation_queue = deque()
+        self._skip_delay = False
 
     def initialize_networks(self) -> None:
         # save_dir = f"{self.run_name}/Initial_Parameters"
@@ -157,6 +178,97 @@ class agent(BaseAgent):
             a = a + self.ou_noise.sample()
         return np.clip(a, -self.actor.max_action, self.actor.max_action)
 
+    def delay_action(self, action, observation):
+        convection_complete = False
+
+        def _zero_like(obs):
+            if isinstance(obs, torch.Tensor):
+                return torch.zeros_like(obs)
+            if isinstance(obs, np.ndarray):
+                return np.zeros_like(obs)
+            if isinstance(obs, (list, tuple)):
+                zeros = [0 for _ in obs]
+                return type(obs)(zeros)
+            return 0.0
+
+        def _as_float(value):
+            if isinstance(value, torch.Tensor):
+                flat = value.detach().reshape(-1)
+                if flat.numel() == 0:
+                    return 0.0
+                return float(flat[0].item())
+            arr = np.asarray(value)
+            if arr.size == 0:
+                return 0.0
+            return float(arr.reshape(-1)[0])
+
+        default_prev_obs = _zero_like(observation)
+        default_next_obs = _zero_like(observation)
+        
+        if self.env.step_count == 0:
+            self.actuation_queue.clear()
+            self.observation_queue.clear()
+            self._skip_delay = False
+            # Acceptable sensor actuator setup
+            ok_upstream = (self.env._obs_xend < self.slot_start)
+            # Unacceptable sensor actuator setup (No delay)
+            contiguous = (self.env._obs_xend == self.slot_start)
+            overlaps = (self.env._obs_xend > self.slot_start)
+            self._skip_delay = contiguous or overlaps
+            if self._skip_delay:
+                print(f"observation window x: {self.env._obs_xstart}-{self.env._obs_xend} must be upstream from actuator x: {self.slot_start}-{self.slot_end}")
+                print(f"delay will not be applied")
+                return _as_float(action), default_prev_obs, default_next_obs, False
+            
+        if self._skip_delay:
+            return _as_float(action), default_prev_obs, default_next_obs, False
+            
+        # enqueue the control action with zero accumulated convection
+        self.actuation_queue.append({"actuation": action, "convection": 0.0})
+        self.observation_queue.append({"observation": observation})
+
+        # compute local convective velocity at the sensing region
+        rho_slice = streams.wrap_get_w_avzg_slice(
+            self.env._obs_xstart,
+            self.env._obs_xend,
+            self.env._obs_ystart,
+            self.env._obs_yend,
+            1,
+        )
+        rhou_slice = streams.wrap_get_w_avzg_slice(
+            self.env._obs_xstart,
+            self.env._obs_xend,
+            self.env._obs_ystart,
+            self.env._obs_yend,
+            2,
+        )
+        u_slice = rhou_slice[0] / rho_slice[0]
+        Uc = float(np.mean(u_slice))
+
+        dt = float(streams.wrap_get_dtglobal())
+        dx = self.lx / self.nx
+
+        # distance between sensor and actuator centroids in index units
+        sensor_centroid = 0.5 * (self.env._obs_xstart + self.env._obs_xend)
+        slot_centroid = 0.5 * (self.slot_start + self.slot_end)
+        distance_index = slot_centroid - sensor_centroid
+
+        # update convection progress for all queued actions
+        for entry in self.actuation_queue:
+            entry["convection"] += (Uc * dt) / dx
+
+        step_actuation = 0.0
+        step_observation = _zero_like(observation)
+        next_step_observation = _zero_like(observation)
+        if self.actuation_queue and self.actuation_queue[0]["convection"] >= distance_index:
+            step_actuation = self.actuation_queue.popleft()["actuation"]
+            step_observation = self.observation_queue.popleft()["observation"]
+            if self.observation_queue:
+                next_step_observation = self.observation_queue[0]["observation"]
+                convection_complete = True
+            
+        return _as_float(step_actuation), step_observation, next_step_observation, convection_complete        
+            
     def learn(self, obs, action, reward, next_obs):
         self.replay_buffer.store(
             torch.tensor(obs, dtype=torch.float32),

@@ -232,8 +232,8 @@ class StreamsGymEnv(gymnasium.Env):
         # "lambda_trace" controls exponential decay of eligibility for accumulating rewards.
         # TODO: Calculate lag_steps based on convection jet and let user specify their own lag_steps to overwrite calculation if specified
         self.action_queue = deque()
-        self.lag_steps = 50
-        self.lambda_trace = 0.95
+        self.lag_steps = jet_params["lag_steps"]
+        self.lambda_trace = 1.0 - (1.0 / self.lag_steps)
 
 
         if self.rank == 0:
