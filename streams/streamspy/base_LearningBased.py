@@ -10,11 +10,6 @@ class BaseAgent(ABC):
     def choose_action(self, observation):
         """Return action for given observation."""
         raise NotImplementedError
-        
-    @abstractmethod
-    def delay_action(self, action, observation):
-        """Delay the action after selection."""
-        raise NotImplementedError
 
     @abstractmethod
     def learn(self):

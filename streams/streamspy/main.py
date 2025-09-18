@@ -185,7 +185,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
                     obs_array = _to_numpy_copy(obs)
                     obs_tensor = torch.tensor(obs_array, dtype=torch.float32)
                     action_t = agent.choose_action(obs_tensor, step)
-                    action_t, obs_t, obs_t_next, convection_complete = agent.delay_action(action_t, obs_tensor) # Delay action if desired
+                    action_t, obs_t, obs_t_next, convection_complete = env.delay_action(action_t, obs_tensor) # Delay action if desired
                 else:
                     action_t = None
                 action_t = comm.bcast(action_t, root=0)
@@ -297,7 +297,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
                     obs_array = _to_numpy_copy(obs)
                     obs_tensor = torch.tensor(obs_array, dtype=torch.float32)
                     raw_action = agent.choose_action(obs_tensor, step)
-                    actuation, obs_t, obs_t_next, convection_complete = agent.delay_action(raw_action, obs_tensor)
+                    actuation, obs_t, obs_t_next, convection_complete = env.delay_action(raw_action, obs_tensor)
                 else:
                     actuation = None
                 actuation = comm.bcast(actuation, root=0)

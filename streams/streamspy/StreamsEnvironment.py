@@ -8,6 +8,7 @@ import numpy as np
 import gymnasium
 from gymnasium import spaces
 from pathlib import Path
+import torch
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 if PROJECT_ROOT not in sys.path:
@@ -227,6 +228,11 @@ class StreamsGymEnv(gymnasium.Env):
         self.max_episode_steps = int(self.config.temporal.num_iter)
         self.current_time = 0.0
 
+        # Store actuator geometry for delayed actions
+        self.slot_start = int(jet_params["slot_start"])
+        self.slot_end = int(jet_params["slot_end"])
+        self.sensor_actuator_delay = bool(jet_params.get("sensor_actuator_delay"))
+
         # Parameters for delayed reward via eligibility traces
         # "lag_steps" controls how many steps elapse before credit is assigned to an action.
         # "lambda_trace" controls exponential decay of eligibility for accumulating rewards.
@@ -235,6 +241,10 @@ class StreamsGymEnv(gymnasium.Env):
         self.lag_steps = jet_params["lag_steps"]
         self.lambda_trace = 1.0 - (1.0 / self.lag_steps)
 
+        # State for convection-delayed actuation
+        self._delay_actuation_queue = deque()
+        self._delay_observation_queue = deque()
+        self._delay_skip = False
 
         if self.rank == 0:
             print(f'[StreamsEnvironment.py] gym environment initialized')
@@ -435,12 +445,111 @@ class StreamsGymEnv(gymnasium.Env):
         self.current_time = 0.0
         # Rest action_queue
         self.action_queue.clear()
+        self._delay_actuation_queue.clear()
+        self._delay_observation_queue.clear()
+        self._delay_skip = False
 
         # Gym expects a float32 array
         return u_global.astype(np.float32)
         #
         # END DEVELOPER SECTION: RETURN YOUR INITIAL OBSERVATION
         #
+
+    def delay_action(self, action, observation):
+        """Delay a control signal until it convects from sensors to actuator."""
+
+        convection_complete = False
+
+        def _zero_like(obs):
+            if torch is not None and isinstance(obs, torch.Tensor):
+                return torch.zeros_like(obs)
+            if isinstance(obs, np.ndarray):
+                return np.zeros_like(obs)
+            if isinstance(obs, (list, tuple)):
+                zeros = [0 for _ in obs]
+                return type(obs)(zeros)
+            return 0.0
+
+        def _as_float(value):
+            if torch is not None and isinstance(value, torch.Tensor):
+                flat = value.detach().reshape(-1)
+                if flat.numel() == 0:
+                    return 0.0
+                return float(flat[0].item())
+            arr = np.asarray(value)
+            if arr.size == 0:
+                return 0.0
+            return float(arr.reshape(-1)[0])
+
+        default_prev_obs = _zero_like(observation)
+        default_next_obs = _zero_like(observation)
+
+        if self.step_count == 0:
+            self._delay_actuation_queue.clear()
+            self._delay_observation_queue.clear()
+            self._delay_skip = False
+            contiguous = self._obs_xend == self.slot_start
+            overlaps = self._obs_xend > self.slot_start
+            self._delay_skip = contiguous or overlaps
+            if self._delay_skip and self.rank == 0:
+                print(
+                    f"observation window x: {self._obs_xstart}-{self._obs_xend} must be upstream from actuator x: {self.slot_start}-{self.slot_end}"
+                )
+                print("delay will not be applied")
+
+        if self._delay_skip or not self.sensor_actuator_delay:
+            return _as_float(action), default_prev_obs, default_next_obs, False
+
+        self._delay_actuation_queue.append({"actuation": action, "convection": 0.0})
+        self._delay_observation_queue.append({"observation": observation})
+
+        rho_slice = streams.wrap_get_w_avzg_slice(
+            self._obs_xstart,
+            self._obs_xend,
+            self._obs_ystart,
+            self._obs_yend,
+            1,
+        )
+        rhou_slice = streams.wrap_get_w_avzg_slice(
+            self._obs_xstart,
+            self._obs_xend,
+            self._obs_ystart,
+            self._obs_yend,
+            2,
+        )
+        u_slice = rhou_slice[0] / rho_slice[0]
+        Uc = float(np.mean(u_slice))
+
+        dt = float(streams.wrap_get_dtglobal())
+        dx = self.config.length.lx / self.config.grid.nx
+
+        sensor_centroid = 0.5 * (self._obs_xstart + self._obs_xend)
+        slot_centroid = 0.5 * (self.slot_start + self.slot_end)
+        distance_index = slot_centroid - sensor_centroid
+
+        for entry in self._delay_actuation_queue:
+            entry["convection"] += (Uc * dt) / dx
+
+        step_actuation = 0.0
+        step_observation = _zero_like(observation)
+        next_step_observation = _zero_like(observation)
+        if (
+            self._delay_actuation_queue
+            and self._delay_actuation_queue[0]["convection"] >= distance_index
+        ):
+            step_actuation = self._delay_actuation_queue.popleft()["actuation"]
+            step_observation = self._delay_observation_queue.popleft()["observation"]
+            if self._delay_observation_queue:
+                next_step_observation = self._delay_observation_queue[0]["observation"]
+                convection_complete = True
+
+        return (
+            _as_float(step_actuation),
+            step_observation,
+            next_step_observation,
+            convection_complete,
+        )
+
 
     # Gym Environment: Step
     def step(self, action):
