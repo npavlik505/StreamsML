@@ -2,9 +2,9 @@
 
 __version__ = "0.1"
 
-from .config import *
-#from .globals import *
-from .io_utils import *
-from .jet_actuator import *
-from .Control import ddpg, dqn, ppo, opp, pid
-from .utils import *
+from streamspy.config import *
+# from streamspy.globals import *
+from streamspy.io_utils import *
+from streamspy.jet_actuator import *
+from streamspy.Control import ddpg, dqn, ppo, opp, pid
+from streamspy.utils import *
