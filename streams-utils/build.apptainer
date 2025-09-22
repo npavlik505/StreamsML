@@ -8,13 +8,14 @@ Stage: build
 # https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nvhpc
 
 %files
-	${STREAMS_DIR} /streams
-	# ${STREAMS_UTILS_DIR}/libstreamsMin.pyf ${STREAMS_DIR}/src/libstreamsMin.pyf
-	# ${STREAMS_UTILS_DIR}/libstreamsMod.pyf ${STREAMS_DIR}/src/libstreamsMod.pyf
-	${STREAMS_UTILS_DIR}/src/ /streams-utils/src
-	${STREAMS_UTILS_DIR}/Cargo.toml /streams-utils/Cargo.toml
-	${STREAMS_UTILS_DIR}/Cargo.lock /streams-utils/Cargo.lock
-	${STREAMS_UTILS_DIR}/patch_pyf.py /streams-utils/patch_pyf.py
+        ${STREAMS_DIR} /streams
+        # ${STREAMS_UTILS_DIR}/libstreamsMin.pyf ${STREAMS_DIR}/src/libstreamsMin.pyf
+        # ${STREAMS_UTILS_DIR}/libstreamsMod.pyf ${STREAMS_DIR}/src/libstreamsMod.pyf
+        ${STREAMS_UTILS_DIR}/src/ /streams-utils/src
+        ${STREAMS_UTILS_DIR}/Cargo.toml /streams-utils/Cargo.toml
+        ${STREAMS_UTILS_DIR}/Cargo.lock /streams-utils/Cargo.lock
+        ${STREAMS_UTILS_DIR}/patch_pyf.py /streams-utils/patch_pyf.py
+        ${STREAMS_UTILS_DIR}/requirements.txt /streams-utils/requirements.txt
 
 %post
 	echo "NUMPY VERSION:"
@@ -100,26 +101,31 @@ From: base.sandbox
 # use base here so that we have access to python still
 	
 %files from build
-	/streams-utils/target/release/streams-utils /streams-utils
-	/streams/src/streams.exe /streams.exe
+        /streams-utils/target/release/streams-utils /usr/local/bin/streams-utils
+        /streams/src/streams.exe /streams.exe
 
-	# python files to run streams
-	/streams/src/libstreams*.so /libstreams.so
+        # python files to run streams
+        /streams/src/libstreams*.so /libstreams.so
 
-	# copy python source code into container
-	/streams/streamspy/ /streamspy
-	/streams/pyproject.toml /
+        # copy python source code into container
+        /streams/streamspy/ /streamspy
+        /streams/pyproject.toml /
+        /streams-utils/requirements.txt /streams-utils/requirements.txt
 
-	# Debug files
-	/debuglib /debuglib
+        # Debug files
+        /debuglib /debuglib
 
 %post
 
-	echo "NUMPY VERSION:"
-	pip freeze | grep numpy
+        echo "NUMPY VERSION:"
+        pip freeze | grep numpy
 
-	# copy the shared object to site packages so it is globally importable
-	cp /libstreams* /usr/local/lib/python3.10/dist-packages/
+        echo "📦 Installing STREAMS Python analysis stack"
+        export PIP_NO_BINARY=h5py,mpi4py
+        python3 -m pip install --no-cache-dir -r /streams-utils/requirements.txt
+
+        # copy the shared object to site packages so it is globally importable
+        cp /libstreams* /usr/local/lib/python3.10/dist-packages/
 
         # ✅ make libstreams.so available for runtime linking
         cp /libstreams.so /usr/lib/

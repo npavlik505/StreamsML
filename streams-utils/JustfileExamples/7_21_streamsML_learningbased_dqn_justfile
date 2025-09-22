@@ -107,6 +107,74 @@ run:
 		--python-mount $STREAMS_DIR/streamspy \
 		16
 
+#analysis:
+#        apptainer exec --nv \
+#                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
+#                ./streams.sif \
+#                python3 /streamspy/Analysis/analysis_main.py \
+#                --results_dir {{results_dir}} \
+#                --episode-tag ep_0000 \
+#                --analysis-method DMD \
+
+analysis:
+        apptainer exec --nv \
+                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
+                ./streams.sif \
+                python3 /streamspy/Analysis/analysis_main.py \
+                --results_dir /distribute_save \
+                --episode-tag ep_0000 \
+                --analysis-method pysensors \
+                --num-sensors 6
+                
+#visualize:
+#        apptainer exec --nv \
+#                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
+#                ./streams.sif \
+#                python3 /streamspy/Visualize/visualize_main.py \
+#                 --results_dir {{results_dir}} \
+#                 --episode-tag ep_0000 \
+#                 --vis-type snapshot \
+#                 --snapshot-number 99 \
+#                 --variable w \
+                
+#visualize:
+#        apptainer exec --nv \
+#                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
+#                ./streams.sif \
+#                python3 /streamspy/Visualize/visualize_main.py \
+#                 --results_dir {{results_dir}} \
+#                 --episode-tag ep_0000 \
+#                 --vis-type animation \
+#                 --variable w \
+
+#visualize:
+#        apptainer exec --nv \
+#                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
+#                ./streams.sif \
+#                python3 /streamspy/Visualize/visualize_main.py \
+#                --results_dir {{results_dir}} \
+#                --episode-tag ep_0000 \
+#                --vis-type rl_metrics
+
+visualize:
+        apptainer exec --nv \
+                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
+                ./streams.sif \
+                python3 /streamspy/Visualize/visualize_main.py \
+                --results_dir {{results_dir}} \
+                --episode-tag ep_0000 \
+                --vis-type sa_data \
+
+model:
+        apptainer exec --nv \
+                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
+                ./streams.sif \
+                python3 /streamspy/Modeling/modeling_main.py \
+                --results_dir {{results_dir}} \
+                --episode-tag ep_0000 \
+                --model-type dmdc \
+                --energy 100 \
+
 # get a shell inside the container
 # requires the ./output directory (with its associated folders) to be created, 
 # and a ./streams.sif file to be made

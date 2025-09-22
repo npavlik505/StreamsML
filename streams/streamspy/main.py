@@ -8,10 +8,13 @@ import runpy
 from pathlib import Path
 import numpy as np
 from StreamsEnvironment import StreamsGymEnv
+#from .StreamsEnvironment import StreamsGymEnv
 
 env = StreamsGymEnv()
 
 if env.config.jet.jet_method_name == "OpenLoop":
+
+    rank = env.rank
 
     if rank == 0:
         print(f'OPENLOOP')
@@ -51,6 +54,8 @@ elif env.config.jet.jet_method_name == "Classical":
     import importlib
     from base_Classical import BaseController
     import io_utils
+    #from .base_Classical import BaseController
+    #from . import io_utils
 
     STOP = False
 
@@ -67,6 +72,8 @@ elif env.config.jet.jet_method_name == "Classical":
     strategy = env.config.jet.jet_strategy_name
     module_path = f"Control.{strategy}"
     controller_module = importlib.import_module(module_path)
+    #module_path = f".Control.{strategy}"
+    #controller_module = importlib.import_module(module_path, package=__package__)
     controller_class = getattr(controller_module, "controller")
 
     #if rank == 0:
@@ -75,9 +82,9 @@ elif env.config.jet.jet_method_name == "Classical":
     #    controller = None
     #    
     #controller.recompute_obs()
-    
-    controller = controller_class(env)
-    controller.recompute_obs()
+    if env.config.jet.jet_params.get("organized_motion") != "undefined":
+        controller = controller_class(env)
+        controller.recompute_obs()
 
     obs = env.reset()
     if rank == 0 and hasattr(controller, "reset"):
@@ -122,6 +129,8 @@ elif env.config.jet.jet_method_name == "LearningBased":
     import importlib
     from base_LearningBased import BaseAgent
     import io_utils
+    #from .base_LearningBased import BaseAgent
+    #from . import io_utils
 
     STOP = False
 
@@ -360,6 +369,8 @@ elif env.config.jet.jet_method_name == "LearningBased":
     strategy = env.config.jet.jet_strategy_name
     module_path = f"Control.{strategy}"
     agent_module = importlib.import_module(module_path)
+    #module_path = f".Control.{strategy}"
+    #agent_module = importlib.import_module(module_path, package=__package__)
     agent_class = getattr(agent_module, "agent")
     
     # Clear the checkpoints directory before training runs, but not evaluation runs 

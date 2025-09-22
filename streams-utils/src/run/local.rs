@@ -83,9 +83,20 @@ impl Solver {
         // command executed inside the container. The `run` command would drop
         // any additional flags, causing both training and evaluation to run
         // even when `--eval-only` was specified.
-        let mut exec = cmd!(sh, "apptainer exec --nv --bind {results_path}:/distribute_save,{input_path}:/input{python_mount} ./streams.sif /streams-utils run-container")
-            // ignore the output status so we get more STDOUT information?
-            .ignore_status();
+        let bind_arg = format!(
+            "{}:/distribute_save,{}:/input{}",
+            results_path.display(),
+            input_path.display(),
+            python_mount
+        );
+
+        let mut exec = cmd!(
+            sh,
+            "apptainer exec --nv --bind {bind_arg} ./streams.sif /usr/local/bin/streams-utils"
+        )
+        .arg("run-container")
+        // ignore the output status so we get more STDOUT information?
+        .ignore_status();
 
         if eval_only {
             exec = exec.arg("--eval-only");

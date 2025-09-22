@@ -12,7 +12,8 @@ if PROJECT_ROOT not in sys.path:
 # Script imports
 from config import Config
 from dmdc import run_dmdc
-
+#from ..config import Config
+#from .dmdc import run_dmdc
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run modeling on StreamsML output")

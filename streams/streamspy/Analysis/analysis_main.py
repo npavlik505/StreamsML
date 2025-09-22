@@ -15,6 +15,12 @@ from POD import run_pod
 from DMD import run_dmd
 from PYSENSORS import run_pysensors
 
+# relative
+#from ..config import Config
+#from .POD import run_pod
+#from .DMD import run_dmd
+#from .PYSENSORS import run_pysensors
+
 
 
 if __name__ == "__main__":

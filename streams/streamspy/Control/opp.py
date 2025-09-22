@@ -53,6 +53,7 @@ class controller(BaseController):
         N_buff = max(5, math.ceil(0.1*(self.slot_end - self.slot_start)))
         sensor_x_end = self.slot_start - N_buff
         if self.org_motion == "undefined":
+            print("organized-motion flag not defined. Sensor window will not be recomputed")
             return
         elif self.org_motion == "near_wall":
             y_delta = streams.wrap_get_y(1, self.ny + 1)

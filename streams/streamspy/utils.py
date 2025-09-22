@@ -1,6 +1,8 @@
 from config import Config
+#from .config import Config
 import numpy as np
 from globals import is_master
+#from .globals import is_master
 
 # print, but only print on the master process
 def hprint(*args):

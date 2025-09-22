@@ -1,9 +1,11 @@
 import numpy as np
 from config import Config, Jet
+#from .config import Config, Jet
 import libstreams as streams
 from abc import ABC, abstractmethod
 from typing import Optional, Dict
 import utils
+#from . import utils
 import math
 from mpi4py import rc
 rc.initialize = False

@@ -50,6 +50,7 @@ class StreamsGymEnv(gymnasium.Env):
         rc.finalize = False
         from mpi4py import MPI  # solver MPI must be started (wrap_startmpi()) before mpi4py library import
         import globals # contains rank/comm initialization
+        #from . import globals  # contains rank/comm initialization        
         globals.init()
         self.rank = globals.rank
         self.comm = globals.comm
@@ -57,6 +58,10 @@ class StreamsGymEnv(gymnasium.Env):
         from config import Config # input.json to Config object
         import utils # helper code; calculate_span_averages, etc.
         import jet_actuator # all actuator code
+        #from . import io_utils  # for HDF5
+        #from .config import Config  # input.json to Config object
+        #from . import utils  # helper code; calculate_span_averages, etc.
+        #from . import jet_actuator  # all actuator code
         self.jet_actuator = jet_actuator # bind to self so that it can be used in step method
 
         # Parse, and later access the entries of, input.json using config
@@ -640,6 +645,7 @@ class StreamsGymEnv(gymnasium.Env):
     def init_h5_io(self, directory) -> None:
         """Create HDF5 files and datasets used for diagnostics."""
         import io_utils  # imported here to avoid modifying global imports
+        # from . import io_utils  # imported here to avoid modifying global imports
 
         # Allocate temporary arrays for diagnostic computations
         self._span_average = np.zeros([5, self.config.nx_mpi(), self.config.ny_mpi()], dtype=np.float64)
@@ -693,6 +699,7 @@ class StreamsGymEnv(gymnasium.Env):
     def log_step_h5(self, jet_amplitude: float) -> None:
         """Write solver data for the current step to the HDF5 datasets."""
         import utils
+        #from . import utils
 
         dt = float(streams.wrap_get_dtglobal())
         self.dt_dset.write_array(np.array([dt], dtype=np.float32))

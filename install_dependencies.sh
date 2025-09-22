@@ -40,8 +40,8 @@ python3 -m venv streamsenv
 source streamsenv/bin/activate
 
 # Upgrade pip and install python dependencies
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r ./streams-utils/requirements.txt
+python -m pip install --upgrade 'pip==24.0'
+python -m pip install --no-cache-dir -r ./streams-utils/requirements.txt
 
 # Install just using cargo
 if ! command -v just >/dev/null 2>&1; then

@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-import os
+#import os
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 if PROJECT_ROOT not in sys.path:
@@ -16,6 +16,11 @@ from SNAPSHOT import run_snapshot
 from ANIMATION import run_animation
 from RL_METRICS import run_rlmetrics
 from SA_DATA import run_sadata
+#from ..config import Config
+#from .SNAPSHOT import run_snapshot
+#from .ANIMATION import run_animation
+#from .RL_METRICS import run_rlmetrics
+#from .SA_DATA import run_sadata
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run visualization on StreamsML output")
