@@ -414,7 +414,10 @@ impl Config {
         // number of bytes for floating point
         let n_bytes = 8usize;
         gpu_used_mem += 1.5;
-        gpu_used_mem *= ((self.x_divisions + (2 * n_ghost))
+        // gpu_used_mem *= ((self.x_divisions + (2 * n_ghost))
+        let local_x_divisions = self.x_divisions / self.mpi_x_split;
+        
+        gpu_used_mem *= ((local_x_divisions + (2 * n_ghost))
             * (self.y_divisions + (2 * n_ghost))
             * (self.z_divisions + (2 * n_ghost))) as f64;
         gpu_used_mem *= (n_bytes as f64) / (1024. * 1024.);
