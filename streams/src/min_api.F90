@@ -77,9 +77,30 @@ subroutine wrap_tauw_calculate() bind(C, name="wrap_tauw_calculate")
     use iso_c_binding
     !f2py intent(c) wrap_tauw_calculate
     !f2py intent(hide)
-    use mod_streams, only: tauw_x, w_avzg, mykind, y, nx, ny, ncoords
+    use mod_streams, only: tauw_x, tauw_x_gpu, w_avzg, w_avzg_gpu, mykind, y, y_gpu, nx, ny, ncoords
     implicit none
     integer :: i, j
+#ifdef USE_CUDA
+    real(mykind) :: uf1, uf2, uf3, uf4
+    real(mykind) :: dudyw_local, dy_local, rmuw_local
+
+    call compute_av()
+    if (ncoords(3) == 0) then
+        !$cuf kernel do(1) <<<*,*>>>
+        do i = 1, nx
+            uf1 = w_avzg_gpu(13, i, 1)/w_avzg_gpu(1, i, 1)
+            uf2 = w_avzg_gpu(13, i, 2)/w_avzg_gpu(1, i, 2)
+            uf3 = w_avzg_gpu(13, i, 3)/w_avzg_gpu(1, i, 3)
+            uf4 = w_avzg_gpu(13, i, 4)/w_avzg_gpu(1, i, 4)
+            dudyw_local = (-22._mykind*uf1 + 36._mykind*uf2 - 18._mykind*uf3 + 4._mykind*uf4)/12._mykind
+            dy_local = (-22._mykind*y_gpu(1) + 36._mykind*y_gpu(2) - 18._mykind*y_gpu(3) + 4._mykind*y_gpu(4))/12._mykind
+            dudyw_local = dudyw_local/dy_local
+            rmuw_local = w_avzg_gpu(20, i, 1)
+            tauw_x_gpu(i) = rmuw_local*dudyw_local
+        end do
+        tauw_x = tauw_x_gpu
+    end if
+#else
     real(mykind), dimension(nx, ny) :: ufav
     real(mykind) :: dudyw, dy, rmuw, tauw
 
@@ -99,12 +120,21 @@ subroutine wrap_tauw_calculate() bind(C, name="wrap_tauw_calculate")
             tauw_x(i) = tauw
         end do
     end if
+#ifdef USE_CUDA
+    if (allocated(tauw_x_gpu)) then
+        tauw_x_gpu = tauw_x
+    end if
+#endif
+#endif
 end subroutine wrap_tauw_calculate
 
 subroutine wrap_compute_av() bind(C, name="wrap_compute_av")
     use iso_c_binding
+    use mod_streams
     !f2py intent(c) wrap_compute_av
     !f2py intent(hide)
+    call updateghost()
+    call prims()
     call compute_av()
 end subroutine wrap_compute_av
 

@@ -134,7 +134,7 @@ class StreamsGymEnv(gymnasium.Env):
         ## Determine the local slice shape to size the observation space.  The
         ## first dimension is the variable index and has length one, so only the
         ## spatial extents are relevant.
-        #sample_slice = streams.wrap_get_w_avzg_slice(
+        #sample_slice = streams.wrap_get_w_avzg_slice_gpu(
         #    self._obs_xstart,
         #    self._obs_xend,
         #    self._obs_ystart,
@@ -161,7 +161,7 @@ class StreamsGymEnv(gymnasium.Env):
         #self._has_values = (d1size > 0 and d2size > 0)
         
         if self._has_values:
-            sample_slice = streams.wrap_get_w_avzg_slice(
+            sample_slice = streams.wrap_get_w_avzg_slice_gpu(
                 self._local_xstart,
                 self._local_xend,
                 self._local_ystart,
@@ -281,7 +281,7 @@ class StreamsGymEnv(gymnasium.Env):
         )
 
         if self._has_values:
-            sample_slice = streams.wrap_get_w_avzg_slice(
+            sample_slice = streams.wrap_get_w_avzg_slice_gpu(
                 self._local_xstart,
                 self._local_xend,
                 self._local_ystart,
@@ -427,14 +427,13 @@ class StreamsGymEnv(gymnasium.Env):
         # BEGIN DEVELOPER SECTION: RETURN YOUR INITIAL OBSERVATION
         #
         # Immediately compute the span‑averaged conservative variables on the new solver (no time steps taken yet).
-        streams.wrap_copy_gpu_to_cpu()  # bring everything from GPU to CPU
         streams.wrap_compute_av() # update the w_avzg
         if self._has_values:
-            local_slice = streams.wrap_get_w_avzg_slice(
+            local_slice = streams.wrap_get_w_avzg_slice_gpu(
                 self._local_xstart,
                 self._local_xend,
                 self._local_ystart,
-                self._local_yend,                
+                self._local_yend,
                 self._obs_index,
             )
             local_slice = np.ravel(local_slice)
@@ -508,14 +507,14 @@ class StreamsGymEnv(gymnasium.Env):
         self._delay_actuation_queue.append({"actuation": action, "convection": 0.0})
         self._delay_observation_queue.append({"observation": observation})
 
-        rho_slice = streams.wrap_get_w_avzg_slice(
+        rho_slice = streams.wrap_get_w_avzg_slice_gpu(
             self._obs_xstart,
             self._obs_xend,
             self._obs_ystart,
             self._obs_yend,
             1,
         )
-        rhou_slice = streams.wrap_get_w_avzg_slice(
+        rhou_slice = streams.wrap_get_w_avzg_slice_gpu(
             self._obs_xstart,
             self._obs_xend,
             self._obs_ystart,
@@ -583,7 +582,6 @@ class StreamsGymEnv(gymnasium.Env):
         #
         # BEGIN DEVELOPER SECTION: COLLECT YOUR OBSERVATION FROM STREAmS, DEFINE YOUR REWARD
         #
-        streams.wrap_copy_gpu_to_cpu()
         streams.wrap_compute_av()
         streams.wrap_tauw_calculate()
 
@@ -610,7 +608,7 @@ class StreamsGymEnv(gymnasium.Env):
         # Observation: span‑averaged conservative variables over the user
         # specified window
         if self._has_values:
-            local_slice = streams.wrap_get_w_avzg_slice(
+            local_slice = streams.wrap_get_w_avzg_slice_gpu(
                 self._local_xstart,
                 self._local_xend,
                 self._local_ystart,
