@@ -35,9 +35,10 @@ python module libstreams ! in
         subroutine wrap_copy_blowing_bc_to_cpu ! in :libstreams:min_api.F90
             intent(c) wrap_copy_blowing_bc_to_cpu
         end subroutine wrap_copy_blowing_bc_to_cpu
-        subroutine wrap_tauw_calculate ! in :libstreams:min_api.F90
+        subroutine wrap_tauw_calculate(averages_current) ! in :libstreams:min_api.F90
             intent(c) wrap_tauw_calculate
             use mod_streams, only: tauw_x,tauw_x_gpu,w_avzg,w_avzg_gpu,mykind,y,y_gpu,nx,ny,ncoords
+            logical intent(in) :: averages_current
         end subroutine wrap_tauw_calculate
         subroutine wrap_compute_av ! in :libstreams:min_api.F90
             intent(c) wrap_compute_av

@@ -32,8 +32,8 @@ build:
 
 
 
-#streams_flow_type := "shock-boundary-layer"
-streams_flow_type := "boundary-layer"
+streams_flow_type := "shock-boundary-layer"
+#streams_flow_type := "boundary-layer"
 
 # build a config json file as input to the solver
 results_dir := "$STREAMS_DIR/streamspy/output"
@@ -46,45 +46,37 @@ checkpoint_tag := "best"
 config_output := "$STREAMS_DIR/streamspy/output/input.json"
 
 config:
-	# create output directory if it does not exist
-	test -d {{results_dir}} || mkdir -p {{results_dir}}
-	
-	echo {{config_output}}
+        # create output directory if it does not exist
+        test -d {{results_dir}} || mkdir -p {{results_dir}}
 
-	# 600, 208, 100
+        test -f $STREAMS_UTILS_DIR/streams.sif
 
-	cargo r -- \
-		config-generator {{config_output}} {{streams_flow_type}} \
-		--steps 55 \
-		--reynolds-number 250 \
-		--mach-number 2.28 \
-		--x-divisions 600 \
-		--y-divisions 208 \
-		--z-divisions 100 \
-		--json \
-		--x-length 27.0 \
-		--y-length 6.0 \
-		--z-length 3.8 \
-		--rly-wr 2.5 \
-		--mpi-x-split 4 \
-		--span-average-io-steps 10 \
-		--probe-io-steps 0 \
-		--python-flowfield-steps 500 \
-		--use-python \
-		--nymax-wr 201 \
-		--sensor-threshold 0.1 \
-		classical opp \
-		    --slot-start 100 \
-		    --slot-end 149 \
-		    --obs-type v \
-		    --obs-xstart 1 \
-		    --obs-xend 50 \
-		    --obs-ystart 1 \
-		    --obs-yend 50 \
-		    --organized-motion LSM \
-		    --gain 1.0 \
+        apptainer exec $STREAMS_UTILS_DIR/streams.sif /usr/local/bin/streams-utils \
+                config-generator {{config_output}} {{streams_flow_type}} \
+                --steps 50000 \
+                --reynolds-number 200 \
+                --mach-number 2.28 \
+                --x-divisions 480 \
+                --y-divisions 208 \
+                --z-divisions 88 \
+                --use-python \
+                --json \
+                --x-length 70.0 \
+                --y-length 12.0 \
+                --z-length 6.5 \
+                --rly-wr 2.5 \
+                --mpi-x-split 1 \
+                --span-average-io-steps 10 \
+                --fixed-dt 0.0008439 \
+                --probe-io-steps 0 \
+                --python-flowfield-steps 30000 \
+                --nymax-wr 201 \
+                --sensor-threshold 0.1 \
+                --shock-angle 8 \
+                --shock-impingement 40.0 \
+                none \
 
-	cat {{config_output}}
+        cat {{config_output}}
 	
 run:
 	cargo r -- run-local \

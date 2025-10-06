@@ -73,18 +73,25 @@ subroutine wrap_copy_blowing_bc_to_cpu() bind(C, name="wrap_copy_blowing_bc_to_c
     call copy_blowing_bc_to_cpu()
 end subroutine wrap_copy_blowing_bc_to_cpu
 
-subroutine wrap_tauw_calculate() bind(C, name="wrap_tauw_calculate")
+subroutine wrap_tauw_calculate(averages_current) bind(C, name="wrap_tauw_calculate")
     use iso_c_binding
     !f2py intent(c) wrap_tauw_calculate
-    !f2py intent(hide)
+    !f2py intent(in) averages_current
     use mod_streams, only: tauw_x, tauw_x_gpu, w_avzg, w_avzg_gpu, mykind, y, y_gpu, nx, ny, ncoords
     implicit none
     integer :: i, j
+    integer(c_int), value :: averages_current
+    logical :: averages_current_logical
 #ifdef USE_CUDA
     real(mykind) :: uf1, uf2, uf3, uf4
     real(mykind) :: dudyw_local, dy_local, rmuw_local
+#endif
 
-    call compute_av()
+    averages_current_logical = (averages_current /= 0)
+    if (.not. averages_current_logical) then
+        call compute_av()
+    end if
+#ifdef USE_CUDA
     if (ncoords(3) == 0) then
         !$cuf kernel do(1) <<<*,*>>>
         do i = 1, nx
@@ -104,7 +111,6 @@ subroutine wrap_tauw_calculate() bind(C, name="wrap_tauw_calculate")
     real(mykind), dimension(nx, ny) :: ufav
     real(mykind) :: dudyw, dy, rmuw, tauw
 
-    call compute_av()
     if (ncoords(3) == 0) then
         do j = 1, ny
             do i = 1, nx
@@ -120,11 +126,11 @@ subroutine wrap_tauw_calculate() bind(C, name="wrap_tauw_calculate")
             tauw_x(i) = tauw
         end do
     end if
+#endif
 #ifdef USE_CUDA
     if (allocated(tauw_x_gpu)) then
         tauw_x_gpu = tauw_x
     end if
-#endif
 #endif
 end subroutine wrap_tauw_calculate
 

@@ -108,28 +108,46 @@ class StreamsGymEnv(gymnasium.Env):
             "rhouv":      (19, -9e7,   9e7),
             "dyn_visc":   (20, 1e-6,   1e-3)
         }
+        jet_method = self.config.jet.jet_method_name
         jet_params = self.config.jet.jet_params
-        obs_key = jet_params["obs_type"]
-        result = obs_types.get(obs_key)
-        if result is None:
-            valid = ", ".join(obs_types.keys())
-            raise ValueError(f"obs_type '{obs_key} not valid. Choose one of: {valid}")
-        self._obs_index, min_val, max_val = result
-        
-        # Store observation bounds so they can be reused when the observation
-        # window is recomputed programmatically after initialization.
-        self._obs_min_val = min_val
-        self._obs_max_val = max_val
-        
-        if self.rank == 0:
-            print(f"Obs consists of {obs_key} data -> index {self._obs_index}, range [{min_val}, {max_val}]")
+        if jet_method == "None":
+            # Fallback defaults for cases without jet actuation parameters.
+            obs_key = "u"
+            self._obs_index, min_val, max_val = obs_types[obs_key]
+            self._obs_min_val = min_val
+            self._obs_max_val = max_val
 
-        self._obs_xstart = int(jet_params["obs_xstart"])
-        self._obs_xend = int(jet_params["obs_xend"])
-        self._obs_ystart = int(jet_params["obs_ystart"])
-        self._obs_yend = int(jet_params["obs_yend"])
-        if self.rank == 0:
-            print(f"Obs space,  X: {self._obs_xstart} to {self._obs_xend} | Y: {self._obs_ystart} to {self._obs_yend}")
+            if self.rank == 0:
+                print(f"Obs consists of {obs_key} data -> index {self._obs_index}, range [{min_val}, {max_val}]")
+
+            self._obs_xstart = 1
+            self._obs_xend = int(self.config.grid.nx)
+            self._obs_ystart = 1
+            self._obs_yend = int(self.config.grid.ny)
+            if self.rank == 0:
+                print(f"Obs space,  X: {self._obs_xstart} to {self._obs_xend} | Y: {self._obs_ystart} to {self._obs_yend}")
+        else:
+            obs_key = jet_params["obs_type"]
+            result = obs_types.get(obs_key)
+            if result is None:
+                valid = ", ".join(obs_types.keys())
+                raise ValueError(f"obs_type '{obs_key} not valid. Choose one of: {valid}")
+            self._obs_index, min_val, max_val = result
+
+            # Store observation bounds so they can be reused when the observation
+            # window is recomputed programmatically after initialization.
+            self._obs_min_val = min_val
+            self._obs_max_val = max_val
+
+            if self.rank == 0:
+                print(f"Obs consists of {obs_key} data -> index {self._obs_index}, range [{min_val}, {max_val}]")
+
+            self._obs_xstart = int(jet_params["obs_xstart"])
+            self._obs_xend = int(jet_params["obs_xend"])
+            self._obs_ystart = int(jet_params["obs_ystart"])
+            self._obs_yend = int(jet_params["obs_yend"])
+            if self.rank == 0:
+                print(f"Obs space,  X: {self._obs_xstart} to {self._obs_xend} | Y: {self._obs_ystart} to {self._obs_yend}")
 
         ## Determine the local slice shape to size the observation space.  The
         ## first dimension is the variable index and has length one, so only the
@@ -234,17 +252,28 @@ class StreamsGymEnv(gymnasium.Env):
         self.current_time = 0.0
 
         # Store actuator geometry for delayed actions
-        self.slot_start = int(jet_params["slot_start"])
-        self.slot_end = int(jet_params["slot_end"])
-        self.sensor_actuator_delay = bool(jet_params.get("sensor_actuator_delay"))
+        if jet_method == "None":
+            self.slot_start = -1
+            self.slot_end = -1
+            self.sensor_actuator_delay = False
+        else:
+            self.slot_start = int(jet_params["slot_start"])
+            self.slot_end = int(jet_params["slot_end"])
+            self.sensor_actuator_delay = bool(jet_params.get("sensor_actuator_delay"))
+
 
         # Parameters for delayed reward via eligibility traces
         # "lag_steps" controls how many steps elapse before credit is assigned to an action.
         # "lambda_trace" controls exponential decay of eligibility for accumulating rewards.
         # TODO: Calculate lag_steps based on convection jet and let user specify their own lag_steps to overwrite calculation if specified
         self.action_queue = deque()
-        self.lag_steps = jet_params["lag_steps"]
-        self.lambda_trace = 1.0 - (1.0 / self.lag_steps)
+        if jet_method == "None":
+            self.lag_steps = 1
+            self.lambda_trace = 0.0
+        else:
+            self.lag_steps = jet_params["lag_steps"]
+            self.lambda_trace = 1.0 - (1.0 / self.lag_steps)
+
 
         # State for convection-delayed actuation
         self._delay_actuation_queue = deque()
@@ -583,7 +612,7 @@ class StreamsGymEnv(gymnasium.Env):
         # BEGIN DEVELOPER SECTION: COLLECT YOUR OBSERVATION FROM STREAmS, DEFINE YOUR REWARD
         #
         streams.wrap_compute_av()
-        streams.wrap_tauw_calculate()
+        streams.wrap_tauw_calculate(True)
 
         # Track actions with an eligibility trace to delay rewards
         self.action_queue.append({"eligibility": 1.0, "accum_reward": 0.0})
@@ -709,7 +738,7 @@ class StreamsGymEnv(gymnasium.Env):
             w = self.config.slice_flowfield_array(streams.wrap_get_w(*self.w_shape))
             utils.calculate_span_averages(self.config, self._span_average, self._temp_field, w)
             self.span_average_dset.write_array(self._span_average)
-            streams.wrap_tauw_calculate()
+            streams.wrap_tauw_calculate(False)
             self.shear_stress_dset.write_array(streams.wrap_get_tauw_x(self.tauw_shape))
             self.span_average_time_dset.write_array(np.array([self.current_time], dtype=np.float32))
             streams.wrap_dissipation_calculation()

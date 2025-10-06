@@ -1,3 +1,46 @@
+module mod_api_work_buffers
+    use mod_streams, only: mykind
+    implicit none
+    real(mykind), allocatable, save :: tauw_host(:)
+    real(mykind), allocatable, save :: w_avzg_host(:,:)
+contains
+    subroutine ensure_tauw_host_size(required_len)
+        integer, intent(in) :: required_len
+
+        if (required_len <= 0) then
+            if (allocated(tauw_host)) then
+                deallocate(tauw_host)
+            end if
+            return
+        end if
+
+        if (.not. allocated(tauw_host)) then
+            allocate(tauw_host(required_len))
+        else if (size(tauw_host) /= required_len) then
+            deallocate(tauw_host)
+            allocate(tauw_host(required_len))
+        end if
+    end subroutine ensure_tauw_host_size
+
+    subroutine ensure_w_avzg_host_size(nx_slice, ny_slice)
+        integer, intent(in) :: nx_slice, ny_slice
+
+        if (nx_slice <= 0 .or. ny_slice <= 0) then
+            if (allocated(w_avzg_host)) then
+                deallocate(w_avzg_host)
+            end if
+            return
+        end if
+
+        if (.not. allocated(w_avzg_host)) then
+            allocate(w_avzg_host(nx_slice, ny_slice))
+        else if (size(w_avzg_host, 1) /= nx_slice .or. size(w_avzg_host, 2) /= ny_slice) then
+            deallocate(w_avzg_host)
+            allocate(w_avzg_host(nx_slice, ny_slice))
+        end if
+    end subroutine ensure_w_avzg_host_size
+end module mod_api_work_buffers
+
 !---- Data Retrieving Subroutines ----
 
 subroutine wrap_get_x(x_out, i_start, i_end) bind(C, name="wrap_get_x")
@@ -48,6 +91,7 @@ end subroutine wrap_get_z
 subroutine wrap_get_tauw_x(tauw_out, n) bind(C, name="wrap_get_tauw_x")
     use iso_c_binding, only: c_double
     use mod_streams, only: tauw_x, tauw_x_gpu, mykind
+    use mod_api_work_buffers, only: tauw_host, ensure_tauw_host_size
 #ifdef USE_CUDA
     use cudafor
 #endif
@@ -56,10 +100,7 @@ subroutine wrap_get_tauw_x(tauw_out, n) bind(C, name="wrap_get_tauw_x")
     implicit none
     integer, intent(in), value :: n
     real(c_double), intent(out) :: tauw_out(n)
-    integer :: i, ncopy
-#ifdef USE_CUDA
-    real(mykind), allocatable :: tauw_host(:)
-#endif
+    integer :: ncopy
 
     if (n <= 0) then
         return
@@ -75,20 +116,14 @@ subroutine wrap_get_tauw_x(tauw_out, n) bind(C, name="wrap_get_tauw_x")
     end if
 #ifdef USE_CUDA
     if (allocated(tauw_x_gpu)) then
-        allocate(tauw_host(ncopy))
-        tauw_host = 0._mykind
+        call ensure_tauw_host_size(ncopy)
         tauw_host(1:ncopy) = tauw_x_gpu(1:ncopy)
-        do i = 1, ncopy
-            tauw_out(i) = real(tauw_host(i), kind=c_double)
-        end do
+        tauw_out(1:ncopy) = real(tauw_host(1:ncopy), kind=c_double)
         if (ncopy < n) tauw_out(ncopy + 1:n) = 0.0_c_double
-        deallocate(tauw_host)
         return
     end if
 #endif
-    do i = 1, ncopy
-        tauw_out(i) = real(tauw_x(i), kind=c_double)
-    end do
+    tauw_out(1:ncopy) = real(tauw_x(1:ncopy), kind=c_double)
     if (ncopy < n) tauw_out(ncopy + 1:n) = 0.0_c_double
 end subroutine wrap_get_tauw_x
 
@@ -117,6 +152,7 @@ end subroutine wrap_get_w_avzg_slice
 subroutine wrap_get_w_avzg_slice_gpu(w_avzg_out, obs_xstart, obs_xend, obs_ystart, obs_yend, obs_type) bind(C, name="wrap_get_w_avzg_slice_gpu")
     use iso_c_binding, only: c_int, c_float
     use mod_streams,      only: w_avzg, w_avzg_gpu, mykind
+    use mod_api_work_buffers, only: w_avzg_host, ensure_w_avzg_host_size
 #ifdef USE_CUDA
     use cudafor
 #endif
@@ -124,11 +160,8 @@ subroutine wrap_get_w_avzg_slice_gpu(w_avzg_out, obs_xstart, obs_xend, obs_ystar
     !f2py intent(out) w_avzg_out
     implicit none
     integer(c_int), intent(in), value :: obs_xstart, obs_xend, obs_ystart, obs_yend, obs_type
-    integer :: nx_slice, ny_slice, i, j
+    integer :: nx_slice, ny_slice
     real(c_float), intent(out) :: w_avzg_out(1, obs_xend - obs_xstart + 1, obs_yend - obs_ystart + 1)
-#ifdef USE_CUDA
-    real(mykind), allocatable :: host_buffer(:,:)
-#endif
 
     nx_slice = obs_xend - obs_xstart + 1
     ny_slice = obs_yend - obs_ystart + 1
@@ -146,15 +179,9 @@ subroutine wrap_get_w_avzg_slice_gpu(w_avzg_out, obs_xstart, obs_xend, obs_ystar
     end if
 #ifdef USE_CUDA
     if (allocated(w_avzg_gpu)) then
-        allocate(host_buffer(nx_slice, ny_slice))
-        host_buffer = 0._mykind
-        host_buffer(:, :) = w_avzg_gpu(obs_type, obs_xstart:obs_xend, obs_ystart:obs_yend)
-        do j = 1, ny_slice
-            do i = 1, nx_slice
-                w_avzg_out(1, i, j) = real(host_buffer(i, j), kind=c_float)
-            end do
-        end do
-        deallocate(host_buffer)
+        call ensure_w_avzg_host_size(nx_slice, ny_slice)
+        w_avzg_host(:, :) = w_avzg_gpu(obs_type, obs_xstart:obs_xend, obs_ystart:obs_yend)
+        w_avzg_out(1,:,:) = real(w_avzg_host(:, :), kind=c_float)
         return
     end if
 #endif
