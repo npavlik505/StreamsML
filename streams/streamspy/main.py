@@ -12,12 +12,15 @@ from StreamsEnvironment import StreamsGymEnv
 
 env = StreamsGymEnv()
 
-if env.config.jet.jet_method_name == "OpenLoop":
+if env.config.jet.jet_method_name == "OpenLoop" or env.config.jet.jet_method_name == "None":
 
     rank = env.rank
 
     if rank == 0:
-        print(f'OPENLOOP')
+        if env.config.jet.jet_method_name == "OpenLoop":
+            print(f'OPENLOOP')
+        else:
+            print(f'NO ACTUATION')
     # Instantiate environment and prep h5 files for standard datasets
     # env = StreamsGymEnv()
     save_dir = Path("/distribute_save")
@@ -405,25 +408,6 @@ elif env.config.jet.jet_method_name == "LearningBased":
         best_ckpt = train(env, agent)
         evaluate(env, agent, best_ckpt)
     env.close()
-
-elif env.config.jet.jet_method_name == "None":
-
-    rank = env.rank
-
-    if rank == 0:
-        print(f'NO ACTUATION')
-    save_dir = Path("/distribute_save")
-    env.init_h5_io(save_dir)
-
-    obs = env.reset()
-    for _ in range(env.max_episode_steps):
-        obs, reward, done, info = env.step(np.array([0.0], dtype=np.float32))
-        env.log_step_h5(info["jet_amplitude"])
-
-    env.close_h5_io()
-    env.close()
-    exit()
-
 
 else:
     if env.rank == 0:

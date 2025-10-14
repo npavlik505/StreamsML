@@ -394,8 +394,8 @@ impl JetActuator {
     pub fn slot_start_as_streams_int(&self) -> i32 {
         use JetMethod::*;
         match self.method {
-            None | Classical => -1,
-            OpenLoop | LearningBased => self.params.get("slot_start")
+            None => -1,
+            OpenLoop | Classical | LearningBased => self.params.get("slot_start")
                                                    .and_then(|v| v.as_i64())
                                                    .unwrap_or(-1) as i32,
         }
@@ -404,8 +404,8 @@ impl JetActuator {
     pub fn slot_end_as_streams_int(&self) -> i32 {
         use JetMethod::*;
         match self.method {
-            None | Classical => -1,
-            OpenLoop | LearningBased => self.params.get("slot_end")
+            None => -1,
+            OpenLoop | Classical | LearningBased => self.params.get("slot_end")
                                                    .and_then(|v| v.as_i64())
                                                    .unwrap_or(-1) as i32,
         }
@@ -477,7 +477,7 @@ pub(crate) struct OppArgs {
     #[clap(long)]
     pub(crate) slot_end: usize,
     
-    #[clap(long, default_value = "u")] 
+    #[clap(long)] 
     pub(crate) obs_type: String,
 
     #[clap(long)]
@@ -527,7 +527,7 @@ pub(crate) struct DdpgArgs {
     #[clap(long)]
     pub(crate) slot_end: usize,
     
-    #[clap(long, default_value = "u")] 
+    #[clap(long)] 
     pub(crate) obs_type: String,
 
     #[clap(long)]
@@ -603,7 +603,7 @@ pub(crate) struct DqnArgs {
     #[clap(long)]
     pub(crate) slot_end: usize,
     
-    #[clap(long, default_value = "u")] 
+    #[clap(long)] 
     pub(crate) obs_type: String,
 
     #[clap(long)]
@@ -685,7 +685,7 @@ pub(crate) struct PpoArgs {
     #[clap(long)]
     pub(crate) slot_end: usize,
     
-    #[clap(long, default_value = "u")] 
+    #[clap(long)] 
     pub(crate) obs_type: String,
 
     #[clap(long)]

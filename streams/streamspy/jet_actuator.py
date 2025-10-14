@@ -135,7 +135,7 @@ class SinusoidalActuator(AbstractActuator):
 
     # returns the amplitude of the jet that was used
     def step_actuator(self, time: float, i:int, agent_amplitude: float = None) -> float:
-        adjusted_amplitude = math.sin(self.angular_frequency * time)
+        adjusted_amplitude = self.amplitude*math.sin(self.angular_frequency * time)
         self.actuator.set_amplitude(adjusted_amplitude)
         return adjusted_amplitude
 

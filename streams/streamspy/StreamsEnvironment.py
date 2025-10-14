@@ -85,60 +85,48 @@ class StreamsGymEnv(gymnasium.Env):
         # The global observation is assembled by gathering data from all ranks in `reset` and `step`.
         self.tauw_shape = streams.wrap_get_tauw_x_shape()
         
-        # Note the index (first column) is used for Fortran and is therefore 1-based not 0-based
-        obs_types = {
-            "rho":        (1, 0.0,     10.0),
-            "u":          (2, -3e3,    3e3),
-            "v":          (3, -3e3,    3e3),
-            "w":          (4, -3e3,    3e3),
-            "p":          (5, 0.0,     1e7),
-            "T":          (6, 50.0,    5e3),
-            "rho_sqrd":   (7, 0.0,     1e2),
-            "u_sqrd":     (8, 0.0,     9e6),
-            "v_sqrd":     (9, 0.0,     9e6),
-            "w_sqrd":     (10, 0.0,     9e6),
-            "p_sqrd":     (11, 0.0,    1e14),
-            "T_sqrd":     (12, 2.5e3,  2.5e7),
-            "rhou":       (13, -3e4,   3e4),
-            "rhov":       (14, -3e4,   3e4),
-            "rhow":       (15, -3e4,   3e4),
-            "rhou_sqrd":  (16, 0.0,    9e7),   # ⟨ρ u²⟩
-            "rhov_sqrd":  (17, 0.0,    9e7),   # ⟨ρ v²⟩
-            "rhow_sqrd":  (18, 0.0,    9e7),   # ⟨ρ w²⟩
-            "rhouv":      (19, -9e7,   9e7),
-            "dyn_visc":   (20, 1e-6,   1e-3)
-        }
-        jet_method = self.config.jet.jet_method_name
+        self._has_values = False
+        
         jet_params = self.config.jet.jet_params
-        if jet_method == "None":
-            # Fallback defaults for cases without jet actuation parameters.
-            obs_key = "u"
-            self._obs_index, min_val, max_val = obs_types[obs_key]
-            self._obs_min_val = min_val
-            self._obs_max_val = max_val
-
-            if self.rank == 0:
-                print(f"Obs consists of {obs_key} data -> index {self._obs_index}, range [{min_val}, {max_val}]")
-
-            self._obs_xstart = 1
-            self._obs_xend = int(self.config.grid.nx)
-            self._obs_ystart = 1
-            self._obs_yend = int(self.config.grid.ny)
-            if self.rank == 0:
-                print(f"Obs space,  X: {self._obs_xstart} to {self._obs_xend} | Y: {self._obs_ystart} to {self._obs_yend}")
-        else:
+        self.obs_defined = jet_params.get("obs_type")
+        if self.obs_defined is not None:
+            print("obs_type is TRUE")
+            # Note the index (first column) is used for Fortran and is therefore 1-based not 0-based
+            obs_types = {
+                "rho":        (1, 0.0,     10.0),
+                "u":          (2, -3e3,    3e3),
+                "v":          (3, -3e3,    3e3),
+                "w":          (4, -3e3,    3e3),
+                "p":          (5, 0.0,     1e7),
+                "T":          (6, 50.0,    5e3),
+                "rho_sqrd":   (7, 0.0,     1e2),
+                "u_sqrd":     (8, 0.0,     9e6),
+                "v_sqrd":     (9, 0.0,     9e6),
+                "w_sqrd":     (10, 0.0,     9e6),
+                "p_sqrd":     (11, 0.0,    1e14),
+                "T_sqrd":     (12, 2.5e3,  2.5e7),
+                "rhou":       (13, -3e4,   3e4),
+                "rhov":       (14, -3e4,   3e4),
+                "rhow":       (15, -3e4,   3e4),
+                "rhou_sqrd":  (16, 0.0,    9e7),   # ⟨ρ u²⟩
+                "rhov_sqrd":  (17, 0.0,    9e7),   # ⟨ρ v²⟩
+                "rhow_sqrd":  (18, 0.0,    9e7),   # ⟨ρ w²⟩
+                "rhouv":      (19, -9e7,   9e7),
+                "dyn_visc":   (20, 1e-6,   1e-3)
+            }
+            # jet_params = self.config.jet.jet_params
             obs_key = jet_params["obs_type"]
             result = obs_types.get(obs_key)
             if result is None:
                 valid = ", ".join(obs_types.keys())
                 raise ValueError(f"obs_type '{obs_key} not valid. Choose one of: {valid}")
             self._obs_index, min_val, max_val = result
-
+            
             # Store observation bounds so they can be reused when the observation
             # window is recomputed programmatically after initialization.
             self._obs_min_val = min_val
             self._obs_max_val = max_val
-
+            
             if self.rank == 0:
                 print(f"Obs consists of {obs_key} data -> index {self._obs_index}, range [{min_val}, {max_val}]")
 
@@ -148,52 +136,38 @@ class StreamsGymEnv(gymnasium.Env):
             self._obs_yend = int(jet_params["obs_yend"])
             if self.rank == 0:
                 print(f"Obs space,  X: {self._obs_xstart} to {self._obs_xend} | Y: {self._obs_ystart} to {self._obs_yend}")
-
-        ## Determine the local slice shape to size the observation space.  The
-        ## first dimension is the variable index and has length one, so only the
-        ## spatial extents are relevant.
-        #sample_slice = streams.wrap_get_w_avzg_slice_gpu(
-        #    self._obs_xstart,
-        #    self._obs_xend,
-        #    self._obs_ystart,
-        #    self._obs_yend,
-        #    self._obs_index,
-        #)
-        
-        # Determine the portion of the observation window owned by this MPI
-        # rank.  Ranks whose local domain does not intersect the requested
-        # region return an empty slice.
-        nx_local = self.config.nx_mpi()
-        global_x_start = self.rank * nx_local + 1
-        global_x_end = global_x_start + nx_local - 1
-        self._local_xstart = max(self._obs_xstart, global_x_start)
-        self._local_xend = min(self._obs_xend, global_x_end)
-        self._local_ystart = max(self._obs_ystart, 1)
-        self._local_yend = min(self._obs_yend, self.config.grid.ny)
-        self._has_values = (
-            self._local_xstart <= self._local_xend
-            and self._local_ystart <= self._local_yend
-        )        
-        
-        #d1size, d2size = sample_slice.shape[1:3]
-        #self._has_values = (d1size > 0 and d2size > 0)
-        
-        if self._has_values:
-            sample_slice = streams.wrap_get_w_avzg_slice_gpu(
-                self._local_xstart,
-                self._local_xend,
-                self._local_ystart,
-                self._local_yend,
-                self._obs_index,
-            )
-            d1size, d2size = sample_slice.shape[1:3]
-        else:
-            d1size = d2size = 0
-        
-        local_obs_size = d1size * d2size
-        global_obs_size = self.comm.allreduce(local_obs_size)
-        self._global_obs_size = global_obs_size
-        
+            
+            # Determine the portion of the observation window owned by this MPI
+            # rank.  Ranks whose local domain does not intersect the requested
+            # region return an empty slice.
+            nx_local = self.config.nx_mpi()
+            global_x_start = self.rank * nx_local + 1
+            global_x_end = global_x_start + nx_local - 1
+            self._local_xstart = max(self._obs_xstart, global_x_start)
+            self._local_xend = min(self._obs_xend, global_x_end)
+            self._local_ystart = max(self._obs_ystart, 1)
+            self._local_yend = min(self._obs_yend, self.config.grid.ny)
+            self._has_values = (
+                self._local_xstart <= self._local_xend
+                and self._local_ystart <= self._local_yend
+            )        
+            
+            if self._has_values:
+                sample_slice = streams.wrap_get_w_avzg_slice(
+                    self._local_xstart,
+                    self._local_xend,
+                    self._local_ystart,
+                    self._local_yend,
+                    self._obs_index,
+                )
+                d1size, d2size = sample_slice.shape[1:3]
+            else:
+                d1size = d2size = 0
+            
+            local_obs_size = d1size * d2size
+            global_obs_size = self.comm.allreduce(local_obs_size)
+            self._global_obs_size = global_obs_size
+            
         w1, w2, w3, w4  = streams.wrap_get_w_shape() # conservative vector (x, y, z, (rho, rho-u, rho-v, rho-w, E))
         self.w_shape   = (w1, w2, w3, w4)
         
@@ -251,34 +225,26 @@ class StreamsGymEnv(gymnasium.Env):
         self.max_episode_steps = int(self.config.temporal.num_iter)
         self.current_time = 0.0
 
-        # Store actuator geometry for delayed actions
-        if jet_method == "None":
-            self.slot_start = -1
-            self.slot_end = -1
-            self.sensor_actuator_delay = False
-        else:
+        if self.config.jet.jet_method_name != "None":
+            # Store actuator geometry for delayed actions
             self.slot_start = int(jet_params["slot_start"])
             self.slot_end = int(jet_params["slot_end"])
-            self.sensor_actuator_delay = bool(jet_params.get("sensor_actuator_delay"))
+            
+            if self.config.jet.jet_method_name != "OpenLoop":
+                self.sensor_actuator_delay = bool(jet_params.get("sensor_actuator_delay"))
 
+                # Parameters for delayed reward via eligibility traces
+                # "lag_steps" controls how many steps elapse before credit is assigned to an action.
+                # "lambda_trace" controls exponential decay of eligibility for accumulating rewards.
+                # TODO: Calculate lag_steps based on convection jet and let user specify their own lag_steps to overwrite calculation if specified
+                self.action_queue = deque()
+                self.lag_steps = jet_params["lag_steps"]
+                self.lambda_trace = 1.0 - (1.0 / self.lag_steps)
 
-        # Parameters for delayed reward via eligibility traces
-        # "lag_steps" controls how many steps elapse before credit is assigned to an action.
-        # "lambda_trace" controls exponential decay of eligibility for accumulating rewards.
-        # TODO: Calculate lag_steps based on convection jet and let user specify their own lag_steps to overwrite calculation if specified
-        self.action_queue = deque()
-        if jet_method == "None":
-            self.lag_steps = 1
-            self.lambda_trace = 0.0
-        else:
-            self.lag_steps = jet_params["lag_steps"]
-            self.lambda_trace = 1.0 - (1.0 / self.lag_steps)
-
-
-        # State for convection-delayed actuation
-        self._delay_actuation_queue = deque()
-        self._delay_observation_queue = deque()
-        self._delay_skip = False
+                # State for convection-delayed actuation
+                self._delay_actuation_queue = deque()
+                self._delay_observation_queue = deque()
+                self._delay_skip = False
 
         if self.rank == 0:
             print(f'[StreamsEnvironment.py] gym environment initialized')
@@ -286,16 +252,14 @@ class StreamsGymEnv(gymnasium.Env):
             print(f'max_episode_steps (--steps in justfile): {self.max_episode_steps}')
             print(f'current_time: {self.current_time}')
 
-    # A helper function for the set_observation_window() method below, which dynamically resets the observation window
-    def recompute_obs(self) -> None:
-        """Recompute derived observation window values.
-
-        This is useful when ``_obs_xstart``/``_obs_xend``/``_obs_ystart``/
-        ``_obs_yend`` are modified programmatically after environment
-        creation.  The local slice indices, global observation size and the
-        ``observation_space`` are updated in-place so that a subsequent call to
-        :meth:`reset` reflects the new window.
-        """
+    # Dynamically reset the observation window (useful for moving and morphing windows)
+    def set_observation_window(self, xstart: int, xend: int, ystart: int, yend: int) -> None:
+        """Override the observation bounds and recompute derived fields."""
+        
+        self._obs_xstart = int(xstart)
+        self._obs_xend = int(xend)
+        self._obs_ystart = int(ystart)
+        self._obs_yend = int(yend)
 
         nx_local = self.config.nx_mpi()
         global_x_start = self.rank * nx_local + 1
@@ -310,7 +274,7 @@ class StreamsGymEnv(gymnasium.Env):
         )
 
         if self._has_values:
-            sample_slice = streams.wrap_get_w_avzg_slice_gpu(
+            sample_slice = streams.wrap_get_w_avzg_slice(
                 self._local_xstart,
                 self._local_xend,
                 self._local_ystart,
@@ -337,16 +301,6 @@ class StreamsGymEnv(gymnasium.Env):
                 shape=(self._global_obs_size,),
                 dtype=np.float32,
             )
-
-    # Dynamically reset the observation window (useful for moving and morphing windows)
-    def set_observation_window(self, xstart: int, xend: int, ystart: int, yend: int) -> None:
-        """Override the observation bounds and recompute derived fields."""
-
-        self._obs_xstart = int(xstart)
-        self._obs_xend = int(xend)
-        self._obs_ystart = int(ystart)
-        self._obs_yend = int(yend)
-        self.recompute_obs()
 
     # MPI helper function
     def _gather_nonempty(self, arr: np.ndarray) -> np.ndarray:
@@ -456,13 +410,14 @@ class StreamsGymEnv(gymnasium.Env):
         # BEGIN DEVELOPER SECTION: RETURN YOUR INITIAL OBSERVATION
         #
         # Immediately compute the span‑averaged conservative variables on the new solver (no time steps taken yet).
+        streams.wrap_copy_gpu_to_cpu()  # bring everything from GPU to CPU
         streams.wrap_compute_av() # update the w_avzg
         if self._has_values:
-            local_slice = streams.wrap_get_w_avzg_slice_gpu(
+            local_slice = streams.wrap_get_w_avzg_slice(
                 self._local_xstart,
                 self._local_xend,
                 self._local_ystart,
-                self._local_yend,
+                self._local_yend,                
                 self._obs_index,
             )
             local_slice = np.ravel(local_slice)
@@ -477,10 +432,11 @@ class StreamsGymEnv(gymnasium.Env):
         self.step_count = 0
         self.current_time = 0.0
         # Rest action_queue
-        self.action_queue.clear()
-        self._delay_actuation_queue.clear()
-        self._delay_observation_queue.clear()
-        self._delay_skip = False
+        if self.obs_defined is not None:
+            self.action_queue.clear()
+            self._delay_actuation_queue.clear()
+            self._delay_observation_queue.clear()
+            self._delay_skip = False
 
         # Gym expects a float32 array
         return u_global.astype(np.float32)
@@ -536,14 +492,14 @@ class StreamsGymEnv(gymnasium.Env):
         self._delay_actuation_queue.append({"actuation": action, "convection": 0.0})
         self._delay_observation_queue.append({"observation": observation})
 
-        rho_slice = streams.wrap_get_w_avzg_slice_gpu(
+        rho_slice = streams.wrap_get_w_avzg_slice(
             self._obs_xstart,
             self._obs_xend,
             self._obs_ystart,
             self._obs_yend,
             1,
         )
-        rhou_slice = streams.wrap_get_w_avzg_slice_gpu(
+        rhou_slice = streams.wrap_get_w_avzg_slice(
             self._obs_xstart,
             self._obs_xend,
             self._obs_ystart,
@@ -611,11 +567,9 @@ class StreamsGymEnv(gymnasium.Env):
         #
         # BEGIN DEVELOPER SECTION: COLLECT YOUR OBSERVATION FROM STREAmS, DEFINE YOUR REWARD
         #
+        streams.wrap_copy_gpu_to_cpu()
         streams.wrap_compute_av()
-        streams.wrap_tauw_calculate(True)
-
-        # Track actions with an eligibility trace to delay rewards
-        self.action_queue.append({"eligibility": 1.0, "accum_reward": 0.0})
+        streams.wrap_tauw_calculate()
 
         # Immediate reward based on wall shear stress
         if self.tauw_shape > 0:
@@ -625,19 +579,25 @@ class StreamsGymEnv(gymnasium.Env):
         tau_global = self._gather_nonempty(tau)
         r_t = -float(np.sum(tau_global**2))
 
-        for entry in self.action_queue:
-            entry["accum_reward"] += entry["eligibility"] * r_t
-            entry["eligibility"] *= self.lambda_trace
+        if self.obs_defined is not None:
+            # Track actions with an eligibility trace to delay rewards
+            self.action_queue.append({"eligibility": 1.0, "accum_reward": 0.0})
 
-        if len(self.action_queue) > self.lag_steps:
-            reward = self.action_queue.popleft()["accum_reward"]
+            for entry in self.action_queue:
+                entry["accum_reward"] += entry["eligibility"] * r_t
+                entry["eligibility"] *= self.lambda_trace
+
+            if len(self.action_queue) > self.lag_steps:
+                reward = self.action_queue.popleft()["accum_reward"]
+            else:
+                reward = 0.0
         else:
             reward = 0.0
 
         # Observation: span‑averaged conservative variables over the user
         # specified window
         if self._has_values:
-            local_slice = streams.wrap_get_w_avzg_slice_gpu(
+            local_slice = streams.wrap_get_w_avzg_slice(
                 self._local_xstart,
                 self._local_xend,
                 self._local_ystart,
@@ -738,7 +698,7 @@ class StreamsGymEnv(gymnasium.Env):
             w = self.config.slice_flowfield_array(streams.wrap_get_w(*self.w_shape))
             utils.calculate_span_averages(self.config, self._span_average, self._temp_field, w)
             self.span_average_dset.write_array(self._span_average)
-            streams.wrap_tauw_calculate(False)
+            streams.wrap_tauw_calculate()
             self.shear_stress_dset.write_array(streams.wrap_get_tauw_x(self.tauw_shape))
             self.span_average_time_dset.write_array(np.array([self.current_time], dtype=np.float32))
             streams.wrap_dissipation_calculation()

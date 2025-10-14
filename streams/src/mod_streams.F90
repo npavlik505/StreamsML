@@ -72,7 +72,6 @@ module mod_streams
  ! this is the shear stress along the x axis
  !f2py real*8, dimension(:), allocatable :: tauw_x
  real(mykind), dimension(:), allocatable :: tauw_x
- real(mykind), dimension(:), allocatable :: tauw_x_gpu
  
  ! span-averaged streamwise velocity up to the end of the slot
  !f2py real*8, dimension(:, :), allocatable :: uoverslot
@@ -232,7 +231,6 @@ module mod_streams
 ! Statistical quantities
  integer :: istat,itav,nstat,nstatloc
  real(mykind), dimension(:,:,:), allocatable :: w_av,w_avzg
- real(mykind), dimension(:,:,:), allocatable :: w_avz_gpu,w_avzg_gpu
  real(mykind), dimension(:,:  ), allocatable :: w_av_1d,w_avxzg
  real(mykind), dimension(:), allocatable     ::  xstat
  integer     , dimension(:), allocatable     :: ixstat
@@ -287,8 +285,6 @@ module mod_streams
  attributes(device) :: temperature_trans_gpu
  attributes(device) :: wv_gpu, wv_trans_gpu
 
- attributes(device) :: w_avzg_gpu
-
  attributes(device) :: blowing_bc_slot_velocity_gpu
  attributes(device) :: fdm_y_stencil_gpu
 
@@ -331,8 +327,6 @@ module mod_streams
  attributes(device) :: eta_inflow_gpu,eta_recyc_gpu
  attributes(device) :: map_j_inn_gpu,map_j_out_gpu
  attributes(device) :: weta_inflow_gpu
- attributes(device) :: w_avz_gpu,w_avzg_gpu
- attributes(device) :: tauw_x_gpu
 
  attributes(pinned) :: wbuf1s, wbuf2s, wbuf3s, wbuf4s, wbuf5s, wbuf6s
  attributes(pinned) :: wbuf1r, wbuf2r, wbuf3r, wbuf4r, wbuf5r, wbuf6r
@@ -349,8 +343,6 @@ module mod_streams
  attributes(device) :: rtrms_ib_gpu,rtrms_ib_1d_gpu
  attributes(device) :: wallpfield_gpu
  attributes(device) :: slicexy_gpu
-
- attributes(device) :: tauw_x_gpu
 
  attributes(device) :: gplus_x, gminus_x
  attributes(device) :: gplus_y, gminus_y

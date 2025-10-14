@@ -108,14 +108,14 @@ class controller(BaseController):
         self.actuation_queue.append({"actuation": output, "convection": 0.0})
 
         # compute local convective velocity at the sensing region
-        rho_slice = streams.wrap_get_w_avzg_slice_gpu(
+        rho_slice = streams.wrap_get_w_avzg_slice(
             self.env._obs_xstart,
             self.env._obs_xend,
             self.env._obs_ystart,
             self.env._obs_yend,
             1,
         )
-        rhou_slice = streams.wrap_get_w_avzg_slice_gpu(
+        rhou_slice = streams.wrap_get_w_avzg_slice(
             self.env._obs_xstart,
             self.env._obs_xend,
             self.env._obs_ystart,
