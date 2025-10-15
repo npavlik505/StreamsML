@@ -32,8 +32,8 @@ build:
 
 
 
-#streams_flow_type := "shock-boundary-layer"
-streams_flow_type := "boundary-layer"
+streams_flow_type := "shock-boundary-layer"
+#streams_flow_type := "boundary-layer"
 
 # build a config json file as input to the solver
 results_dir := "$STREAMS_DIR/streamspy/output"
@@ -42,20 +42,22 @@ training := "$STREAMS_DIR/streamspy/output/LB_GymData/training.h5"
 checkpoint := "$STREAMS_DIR/streamspy/output/LB_GymData/checkpoints"
 checkpoint_tag := "best"
 
+input_dir := "$STREAMS_DIR/streamspy/output/input"
+dist_dir  := "$STREAMS_DIR/streamspy/output/distribute_save"
+
+
 # build a config json file as input to the solver
 config_output := "$STREAMS_DIR/streamspy/output/input.json"
 
 config:
 	# create output directory if it does not exist
 	test -d {{results_dir}} || mkdir -p {{results_dir}}
-	
-	echo {{config_output}}
 
-	# 600, 208, 100
+	test -f ./streams.sif
 
-	cargo r -- \
+	apptainer exec ./streams.sif /usr/local/bin/streams-utils \
 		config-generator {{config_output}} {{streams_flow_type}} \
-		--steps 6 \
+		--steps 11 \
 		--reynolds-number 250 \
 		--mach-number 2.28 \
 		--x-divisions 600 \
@@ -67,7 +69,7 @@ config:
 		--z-length 3.8 \
 		--rly-wr 2.5 \
 		--mpi-x-split 4 \
-		--span-average-io-steps 2 \
+		--span-average-io-steps 10 \
 		--probe-io-steps 0 \
 		--python-flowfield-steps 500 \
 		--use-python \
@@ -83,7 +85,7 @@ config:
 		    --obs-ystart 1 \
 		    --obs-yend 50 \
 		    --lag-steps 100 \
-		    --train-episodes 2 \
+		    --train-episodes 1 \
 		    --training-output {{training}} \
 		    --eval-episodes 2 \
 		    --eval-max-steps 6 \
@@ -99,24 +101,42 @@ config:
 
 	cat {{config_output}}
 
-	
 run:
-	cargo r -- run-local \
-		--workdir {{results_dir}}/ \
-		--config {{config_output}} \
-		--database {{database_bl}} \
-		--python-mount $STREAMS_DIR/streamspy \
-		16
+    set -eu
+    : "${STREAMS_DIR:?set STREAMS_DIR}"
+    : "${STREAMS_UTILS_DIR:?set STREAMS_UTILS_DIR}"
+    test -f $STREAMS_UTILS_DIR/streams.sif
+
+    rm -rf "{{input_dir}}" "{{dist_dir}}"
+    mkdir -p "{{input_dir}}" "{{dist_dir}}"
+
+    cp {{config_output}} "{{input_dir}}/input.json"
+    cp {{database_bl}} "{{input_dir}}/database_bl.dat"
+
+    apptainer exec --nv \
+        --bind "{{dist_dir}}:/distribute_save,{{input_dir}}:/input,$STREAMS_DIR/streamspy:/runtimesolver" \
+        $STREAMS_UTILS_DIR/streams.sif \
+        /usr/local/bin/streams-utils run-container
+
 
 eval:
-        cargo r -- run-local \
-                --workdir {{results_dir}}/ \
-                --config {{config_output}} \
-                --database {{database_bl}} \
-                --python-mount $STREAMS_DIR/streamspy \
-                --eval-only \
-                --checkpoint {{checkpoint}}/{{checkpoint_tag}} \
-                16
+	set -eu
+	: "${STREAMS_DIR:?set STREAMS_DIR}"
+	: "${STREAMS_UTILS_DIR:?set STREAMS_UTILS_DIR}"
+	test -f "$STREAMS_UTILS_DIR/streams.sif"
+
+	rm -rf "{{input_dir}}" "{{dist_dir}}"
+	mkdir -p "{{input_dir}}" "{{dist_dir}}"
+
+	cp {{config_output}} "{{input_dir}}/input.json"
+	cp {{database_bl}} "{{input_dir}}/database_bl.dat"
+
+	apptainer exec --nv \
+	  --bind "{{dist_dir}}:/distribute_save,{{input_dir}}:/input,$STREAMS_DIR/streamspy:/runtimesolver,{{checkpoint}}:/checkpoints" \
+	  "$STREAMS_UTILS_DIR/streams.sif" \
+	  /usr/local/bin/streams-utils run-container \
+	  --eval-only \
+	  --checkpoint "/checkpoints/{{checkpoint_tag}}"
 
 #analysis:
 #        apptainer exec --nv \

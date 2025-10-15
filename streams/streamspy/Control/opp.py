@@ -44,6 +44,8 @@ class controller(BaseController):
         
         self.actuation_queue = deque()
         self.obs_ema = None
+        
+        self.recompute_obs()
 
     def reset(self) -> None:
         self.env.close

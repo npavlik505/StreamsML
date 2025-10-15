@@ -89,22 +89,41 @@ config:
 	
 	
 run:
-	cargo r -- run-local \
-		--workdir {{results_dir}}/ \
-		--config {{config_output}} \
-		--database {{database_bl}} \
-		--python-mount $STREAMS_DIR/streamspy \
-		16
+    set -eu
+    : "${STREAMS_DIR:?set STREAMS_DIR}"
+    : "${STREAMS_UTILS_DIR:?set STREAMS_UTILS_DIR}"
+    test -f $STREAMS_UTILS_DIR/streams.sif
+
+    rm -rf "{{input_dir}}" "{{dist_dir}}"
+    mkdir -p "{{input_dir}}" "{{dist_dir}}"
+
+    cp {{config_output}} "{{input_dir}}/input.json"
+    cp {{database_bl}} "{{input_dir}}/database_bl.dat"
+
+    apptainer exec --nv \
+        --bind "{{dist_dir}}:/distribute_save,{{input_dir}}:/input,$STREAMS_DIR/streamspy:/runtimesolver" \
+        $STREAMS_UTILS_DIR/streams.sif \
+        /usr/local/bin/streams-utils run-container
+
 
 eval:
-        cargo r -- run-local \
-                --workdir {{results_dir}}/ \
-                --config {{config_output}} \
-                --database {{database_bl}} \
-                --python-mount $STREAMS_DIR/streamspy \
-                --eval-only \
-                --checkpoint {{checkpoint}}/{{checkpoint_tag}} \
-                16
+	set -eu
+	: "${STREAMS_DIR:?set STREAMS_DIR}"
+	: "${STREAMS_UTILS_DIR:?set STREAMS_UTILS_DIR}"
+	test -f "$STREAMS_UTILS_DIR/streams.sif"
+
+	rm -rf "{{input_dir}}" "{{dist_dir}}"
+	mkdir -p "{{input_dir}}" "{{dist_dir}}"
+
+	cp {{config_output}} "{{input_dir}}/input.json"
+	cp {{database_bl}} "{{input_dir}}/database_bl.dat"
+
+	apptainer exec --nv \
+	  --bind "{{dist_dir}}:/distribute_save,{{input_dir}}:/input,$STREAMS_DIR/streamspy:/runtimesolver,{{checkpoint}}:/checkpoints" \
+	  "$STREAMS_UTILS_DIR/streams.sif" \
+	  /usr/local/bin/streams-utils run-container \
+	  --eval-only \
+	  --checkpoint "/checkpoints/{{checkpoint_tag}}"
 
 #analysis:
 #        python3 $STREAMS_DIR/streamspy/Analysis/analysis_main.py \

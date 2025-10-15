@@ -75,19 +75,11 @@ elif env.config.jet.jet_method_name == "Classical":
     strategy = env.config.jet.jet_strategy_name
     module_path = f"Control.{strategy}"
     controller_module = importlib.import_module(module_path)
-    #module_path = f".Control.{strategy}"
-    #controller_module = importlib.import_module(module_path, package=__package__)
     controller_class = getattr(controller_module, "controller")
 
-    #if rank == 0:
-    #    controller = controller_class(env)
-    #else:
-    #    controller = None
-    #    
-    #controller.recompute_obs()
     if env.config.jet.jet_params.get("organized_motion") != "undefined":
         controller = controller_class(env)
-        controller.recompute_obs()
+        # controller.recompute_obs()
 
     obs = env.reset()
     if rank == 0 and hasattr(controller, "reset"):
