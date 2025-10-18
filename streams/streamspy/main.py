@@ -8,9 +8,43 @@ import runpy
 from pathlib import Path
 import numpy as np
 from StreamsEnvironment import StreamsGymEnv
-#from .StreamsEnvironment import StreamsGymEnv
+
+# cProfile code
+profile = True
+if profile:
+    import atexit, cProfile, sys, os
+    def _rank():
+        # OpenMPI (local mpirun), MPICH/PMI, Slurm, or returns 0
+        return (os.environ.get("OMPI_COMM_WORLD_RANK")
+                or os.environ.get("PMI_RANK")
+                or os.environ.get("SLURM_PROCID")
+                or "0")
+                
+    _pr = cProfile.Profile()
+
+    def _dump():
+        _pr.disable()
+        r = _rank()
+        # prof file (binary) for snakeVis
+        _pr.dump_stats(f"cpu_{r}.prof")
+        # human-readable summary
+        old = sys.stdout
+        try:
+            with open(f"cpu_{r}.txt", "w") as out:
+                sys.stdout = out
+                _pr.print_stats(sort="time")
+        finally:
+            sys.stdout = old
+
+    atexit.register(_dump)
+# End of cProfile code. Move the _pr.enable conditional to where you want the profiling to begin.
+
+
 
 env = StreamsGymEnv()
+
+if profile:
+    _pr.enable() # Start the profiling after initialization
 
 if env.config.jet.jet_method_name == "OpenLoop" or env.config.jet.jet_method_name == "None":
 

@@ -57,7 +57,7 @@ config:
 
 	apptainer exec ./streams.sif /usr/local/bin/streams-utils \
 		config-generator {{config_output}} {{streams_flow_type}} \
-		--steps 11 \
+		--steps 32 \
 		--reynolds-number 250 \
 		--mach-number 2.28 \
 		--x-divisions 600 \
@@ -71,14 +71,14 @@ config:
 		--mpi-x-split 4 \
 		--span-average-io-steps 10 \
 		--probe-io-steps 0 \
-		--python-flowfield-steps 500 \
+		--python-flowfield-steps 10 \
 		--use-python \
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
 		learning-based ddpg \
 		    --slot-start 100 \
 		    --slot-end 149 \
-		    --obs-type v \
+		    --obs-type u \
 		    --sensor-actuator-delay \
 		    --obs-xstart 1 \
 		    --obs-xend 50 \
@@ -87,8 +87,8 @@ config:
 		    --lag-steps 100 \
 		    --train-episodes 1 \
 		    --training-output {{training}} \
-		    --eval-episodes 2 \
-		    --eval-max-steps 6 \
+		    --eval-episodes 1 \
+		    --eval-max-steps 32 \
 		    --eval-output {{eval}} \
 		    --checkpoint-interval 5 \
 		    --checkpoint-dir {{checkpoint}} \
