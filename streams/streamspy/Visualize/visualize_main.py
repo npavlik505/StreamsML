@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-#import os
+import os
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 if PROJECT_ROOT not in sys.path:

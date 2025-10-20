@@ -36,6 +36,7 @@ streams_flow_type := "shock-boundary-layer"
 #streams_flow_type := "boundary-layer"
 
 # build a config json file as input to the solver
+streamspy_dir := "$STREAMS_DIR/streamspy"
 results_dir := "$STREAMS_DIR/streamspy/output"
 eval := "$STREAMS_DIR/streamspy/output/LB_GymData/evaluation.h5"
 training := "$STREAMS_DIR/streamspy/output/LB_GymData/training.h5"
@@ -149,24 +150,24 @@ eval:
 
 analysis:
         apptainer exec --nv \
-                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
+                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input,{{streamspy_dir}}:/streamspy \
                 ./streams.sif \
                 python3 /streamspy/Analysis/analysis_main.py \
-                --results_dir /distribute_save \
+                --results_dir {{results_dir}} \
                 --episode-tag ep_0000 \
                 --analysis-method pysensors \
                 --num-sensors 6
                 
-#visualize:
-#        apptainer exec --nv \
-#                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
-#                ./streams.sif \
-#                python3 /streamspy/Visualize/visualize_main.py \
-#                 --results_dir {{results_dir}} \
-#                 --episode-tag ep_0000 \
-#                 --vis-type snapshot \
-#                 --snapshot-number 99 \
-#                 --variable w \
+visualize:
+        apptainer exec --nv \
+                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input,{{streamspy_dir}}:/streamspy \
+                ./streams.sif \
+                python3 /streamspy/Visualize/visualize_main.py \
+                 --results_dir {{results_dir}} \
+                 --episode-tag ep_0000 \
+                 --vis-type snapshot \
+                 --snapshot-number 1 \
+                 --variable rho \
                 
 #visualize:
 #        apptainer exec --nv \
@@ -187,14 +188,14 @@ analysis:
 #                --episode-tag ep_0000 \
 #                --vis-type rl_metrics
 
-visualize:
-        apptainer exec --nv \
-                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
-                ./streams.sif \
-                python3 /streamspy/Visualize/visualize_main.py \
-                --results_dir {{results_dir}} \
-                --episode-tag ep_0000 \
-                --vis-type sa_data \
+#visualize:
+#        apptainer exec --nv \
+#                --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
+#                ./streams.sif \
+#                python3 /streamspy/Visualize/visualize_main.py \
+#                --results_dir {{results_dir}} \
+#                --episode-tag ep_0000 \
+#                --vis-type sa_data \
 
 model:
         apptainer exec --nv \
