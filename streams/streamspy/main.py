@@ -232,15 +232,14 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 if rank == 0:
                     next_obs_array = _to_numpy_copy(next_obs)
                     if convection_complete:
-                        sa_queue.append((_to_numpy_copy(obs_t), action_t, _to_numpy_copy(obs_t_next), info["time"]))
+                        sa_queue.append((_to_numpy_copy(obs_t), action_t, info["time"]))
                     else:
-                        sa_queue.append((obs_array, action_t, next_obs_array, info["time"]))
+                        sa_queue.append((obs_array, action_t, info["time"]))
                 if len(sa_queue) > env.lag_steps:
-                    old_obs, old_action, old_next, old_time = sa_queue.popleft()
+                    old_obs, old_action, old_time = sa_queue.popleft()
                     old_obs_np = _to_numpy_copy(old_obs)
-                    old_next_np = _to_numpy_copy(old_next)
                     ep_reward += reward
-                    agent.learn(old_obs_np, old_action, reward, old_next_np)
+                    agent.learn(old_obs_np, old_action, reward, next_obs_array)
                     if write_training:
                         idx = step - env.lag_steps
                         time_dset[ep, idx] = old_time

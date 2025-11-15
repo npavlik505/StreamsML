@@ -31,23 +31,27 @@ build:
 
 
 
+streams_flow_type := "shock-boundary-layer"
+#streams_flow_type := "boundary-layer"
+
 # build a config json file as input to the solver
-config_output := "./output/input.json"
-#streams_flow_type := "shock-boundary-layer"
-streams_flow_type := "boundary-layer"
-eval := "./RL_metrics/evaluation"
-training := "./RL_metrics/training"
-checkpoint := "./RL_metrics/checkpoint"
+streamspy_dir := "$STREAMS_DIR/streamspy"
+results_dir := "$STREAMS_DIR/streamspy/output"
+eval := "$STREAMS_DIR/streamspy/output/LB_GymData/evaluation.h5"
+training := "$STREAMS_DIR/streamspy/output/LB_GymData/training.h5"
+checkpoint := "$STREAMS_DIR/streamspy/output/LB_GymData/checkpoints"
+checkpoint_tag := "best"
+
+input_dir := "$STREAMS_DIR/streamspy/output/input"
+dist_dir  := "$STREAMS_DIR/streamspy/output/distribute_save"
 
 config:
 	# create output directory if it does not exist
 	test -d {{results_dir}} || mkdir -p {{results_dir}}
-	
-	echo {{config_output}}
 
-	# 600, 208, 100
+	test -f ./streams.sif
 
-	cargo r -- \
+	apptainer exec ./streams.sif /usr/local/bin/streams-utils \
 		config-generator {{config_output}} {{streams_flow_type}} \
 		--steps 6 \
 		--reynolds-number 250 \

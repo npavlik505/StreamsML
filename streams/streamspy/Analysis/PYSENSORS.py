@@ -31,7 +31,7 @@ def run_pysensors(sa_path: Path, output_dir: Path, num_sensors: int = 10) -> Pat
         sa = f["span_average"][:]  # span_average shape is (snapshots, measurements, nx, ny)
 
     # Measurements is rho=0, U=1, V=2
-    illustration = sa[0, 1, :, :]    # The final snapshot is used for background, shape is nx, ny. sa[-1, (0:rho, 1:u, 2:v, 3:w, 4:E), :, :] 
+    illustration = sa[-2, 1, :, :]    # The final snapshot is used for background, shape is nx, ny. sa[-1, (0:rho, 1:u, 2:v, 3:w, 4:E), :, :] 
     u = sa[:, 1, :, :]
     v = sa[:, 2, :, :]
     snapshots, nx, ny = u.shape

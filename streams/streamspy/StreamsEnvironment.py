@@ -572,12 +572,27 @@ class StreamsGymEnv(gymnasium.Env):
         streams.wrap_tauw_calculate()
 
         # Immediate reward based on wall shear stress
+        #if self.tauw_shape > 0:
+        #    tau = streams.wrap_get_tauw_x(self.tauw_shape)
+        #else:
+        #    tau = np.empty((0,), dtype=np.float64)
+        #tau_global = self._gather_nonempty(tau)
+        #r_t = -float(np.sum(tau_global**2))
+
         if self.tauw_shape > 0:
             tau = streams.wrap_get_tauw_x(self.tauw_shape)
         else:
             tau = np.empty((0,), dtype=np.float64)
         tau_global = self._gather_nonempty(tau)
-        r_t = -float(np.sum(tau_global**2))
+        tau_mean = float(np.mean(tau_global))  # ⟨τ_w⟩ over the wall
+
+        # --- Option A: reference/edge (default) ---
+        rho_ref = 1.0                       # typical nondimensional choice
+        U_ref   = float(self.config.physics.mach)  # if a_ref=1 in your nondim
+        den = 0.5 * rho_ref * (U_ref**2)
+        
+        Cf = tau_mean / max(den, 1e-30)
+        r_t = -Cf  # reward is negative skin friction coefficient
 
         if self.obs_defined is not None:
             # Track actions with an eligibility trace to delay rewards
