@@ -124,6 +124,19 @@ subroutine wrap_get_blowing_bc_slot_velocity(arr, n1, n2) bind(C, name="wrap_get
     arr = real(blowing_bc_slot_velocity, kind=c_float)
 end subroutine wrap_get_blowing_bc_slot_velocity
 
+subroutine wrap_set_blowing_bc_slot_velocity(arr, n1, n2) bind(C, name="wrap_set_blowing_bc_slot_velocity")
+    use iso_c_binding, only: c_int, c_float
+    use mod_streams,      only: blowing_bc_slot_velocity, mykind
+    !f2py intent(c) wrap_set_blowing_bc_slot_velocity
+    !f2py intent(inout) arr
+    implicit none
+    integer(c_int), intent(in), value :: n1, n2
+    real   (c_float), intent(inout)      :: arr(n1, n2)
+
+    blowing_bc_slot_velocity(1:n1, 1:n2) = real(arr, kind=mykind)
+    arr = real(blowing_bc_slot_velocity(1:n1, 1:n2), kind=c_float)
+end subroutine wrap_set_blowing_bc_slot_velocity
+
 subroutine wrap_set_nx_slot(val) bind(C, name="wrap_set_nx_slot")
     use iso_c_binding
     use mod_streams, only: nx_slot

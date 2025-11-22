@@ -65,8 +65,8 @@ class JetActuator():
 
         if self.has_slot:
             sv1, sv2 = streams.wrap_get_blowing_bc_slot_velocity_shape()
-            arr = streams.wrap_get_blowing_bc_slot_velocity(sv1, sv2)
-            self.bc_velocity = arr.reshape((sv1, sv2))
+            self.slot_shape = (sv1, sv2)
+            self.bc_velocity = np.empty(self.slot_shape, dtype=np.float32, order="F")
 
     def set_amplitude(self, amplitude: float):
         # WARNING: copying to GPU and copying to CPU must happen on ALL mpi procs
@@ -80,6 +80,7 @@ class JetActuator():
         # actuator will have with this amplitude
         poly = self.factory.poly(amplitude)
 
+        self.bc_velocity.fill(0.0)
         for idx in range(self.local_slot_nx):
             local_x = self.local_slot_start_x + idx
             global_x = self.config.local_to_global_x(local_x, self.rank)
@@ -87,6 +88,7 @@ class JetActuator():
             velo = poly.evaluate(global_x)
             self.bc_velocity[idx, 0:self.local_slot_nz] = velo
 
+        streams.wrap_set_blowing_bc_slot_velocity(self.bc_velocity, *self.slot_shape)
         # copy everything back to the GPU
         streams.wrap_copy_blowing_bc_to_gpu()
         return None
