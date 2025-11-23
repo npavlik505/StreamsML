@@ -59,7 +59,7 @@ config:
 	apptainer exec ./streams.sif /usr/local/bin/streams-utils \
 		config-generator {{config_output}} {{streams_flow_type}} \
 		--steps 32 \
-		--reynolds-number 250 \
+		--reynolds-number 200 \
 		--mach-number 2.28 \
 		--x-divisions 600 \
 		--y-divisions 208 \
@@ -76,30 +76,8 @@ config:
 		--use-python \
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
-		learning-based ddpg \
-		    --slot-start 100 \
-		    --slot-end 149 \
-		    --obs-type u \
-		    --sensor-actuator-delay \
-		    --obs-xstart 1 \
-		    --obs-xend 50 \
-		    --obs-ystart 1 \
-		    --obs-yend 50 \
-		    --lag-steps 100 \
-		    --train-episodes 1 \
-		    --training-output {{training}} \
-		    --eval-episodes 1 \
-		    --eval-max-steps 32 \
-		    --eval-output {{eval}} \
-		    --checkpoint-interval 5 \
-		    --checkpoint-dir {{checkpoint}} \
-		    --seed 42 \
-		    --amplitude 1.0 \
-		    --learning-rate 0.0003 \
-		    --gamma 0.99 \
-		    --tau 0.005 \
-		    --buffer-size 100000
-
+		none \
+		
 	cat {{config_output}}
 
 run:
@@ -108,7 +86,6 @@ run:
     : "${STREAMS_UTILS_DIR:?set STREAMS_UTILS_DIR}"
     test -f $STREAMS_UTILS_DIR/streams.sif
 
-    rm -rf "{{input_dir}}" "{{dist_dir}}"
     mkdir -p "{{input_dir}}" "{{dist_dir}}"
 
     cp {{config_output}} "{{input_dir}}/input.json"
@@ -126,7 +103,6 @@ eval:
 	: "${STREAMS_UTILS_DIR:?set STREAMS_UTILS_DIR}"
 	test -f "$STREAMS_UTILS_DIR/streams.sif"
 
-	rm -rf "{{input_dir}}" "{{dist_dir}}"
 	mkdir -p "{{input_dir}}" "{{dist_dir}}"
 
 	cp {{config_output}} "{{input_dir}}/input.json"

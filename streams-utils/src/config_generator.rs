@@ -141,7 +141,7 @@ pub(crate) fn _config_generator(config: &Config, output_path: PathBuf) -> anyhow
    10. 20. 30. 35. 40. 45. 50. 55. 60. 65.
  
  dtsave dtsave_restart  enable_plot3d   enable_vtk
-  5.       50.                0          {snapshots_3d}
+  2.5       2.5                0          {snapshots_3d}
 
  rand_type
    -1

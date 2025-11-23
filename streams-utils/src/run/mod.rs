@@ -10,10 +10,11 @@ use anyhow::Result;
 /// create all the folders that data is written to in the solver
 fn create_dirs(base: &Path) -> Result<()> {
     let csv = base.join("csv_data");
-    fs::create_dir(&csv).with_context(|| format!("failed to create dir {}", csv.display()))?;
+    fs::create_dir_all(&csv).with_context(|| format!("failed to create dir {}", csv.display()))?;
 
     let spans = base.join("spans");
-    fs::create_dir(&spans).with_context(|| format!("failed to create dir {}", csv.display()))?;
+    fs::create_dir_all(&spans)
+        .with_context(|| format!("failed to create dir {}", spans.display()))?;
 
     Ok(())
 }
@@ -91,6 +92,13 @@ fn postprocess(config: &Config) -> Result<()> {
 /// helper function for assembling all the elements to write all binary data to .mat files
 fn write_probes(location: &Path) -> Result<(), Error> {
     let probe_folder = location.join("csv_data");
+    if !probe_folder.exists() {
+        println!(
+            "probe csv directory not found at {}; skipping probe export",
+            probe_folder.display()
+        );
+        return Ok(());
+    }
     let output_folder = location.join("matfiles");
     let config = location.join("/input/input.json");
     let args = cli::ParseProbe::new(probe_folder, output_folder, config);
@@ -106,6 +114,14 @@ pub(crate) fn convert_spans(
     remove_binary: bool,
 ) -> Result<(), Error> {
     let spans_folder = data_location.join("spans");
+
+    if !spans_folder.exists() {
+        println!(
+            "spans directory not found at {}; skipping span conversion",
+            spans_folder.display()
+        );
+        return Ok(());
+    }
 
     // currently not possible to write arrays in binary for 2D files
     let mesh =
