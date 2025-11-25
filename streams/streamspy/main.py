@@ -163,6 +163,14 @@ elif env.config.jet.jet_method_name == "LearningBased":
 
     STOP = False
 
+    def resolve_checkpoint_path(base_path: Path | None, tag: str | None, default_dir: Path, default_tag: str) -> Path:
+        if base_path is None:
+            base_path = default_dir
+            tag = default_tag if tag is None else tag
+        if tag is not None:
+            return base_path / tag
+        return base_path
+
     def train(env: StreamsGymEnv, agent) -> Path:
         """Train agent and return path to best checkpoint."""
         comm = MPI.COMM_WORLD
@@ -377,9 +385,16 @@ elif env.config.jet.jet_method_name == "LearningBased":
         parser = argparse.ArgumentParser()
         parser.add_argument("--eval-only", action="store_true",
                             help="skip training and only run evaluation")
+        parser.add_argument("--train-only", action="store_true",
+                            help="run only the training loop without evaluation")
         parser.add_argument("--checkpoint", type=Path,
-                            help="path to checkpoint to load for evaluation")
+                            help="path to checkpoint to load for evaluation or to initialize training")
+        parser.add_argument("--tag", type=str,
+                            help="checkpoint tag to load (appended to the checkpoint path)")
         args = parser.parse_args()
+
+        if args.eval_only and args.train_only:
+            parser.error("--eval-only and --train-only cannot be used together")
 
     # Generate random number via torch. Not used now but present for future restart use.
     torch.manual_seed(env.config.jet.jet_params["seed"])
@@ -403,7 +418,8 @@ elif env.config.jet.jet_method_name == "LearningBased":
     
     # Clear the checkpoints directory before training runs, but not evaluation runs 
     checkpoint_dir = Path(env.config.jet.jet_params.get("checkpoint_dir"))
-    if not args.eval_only:
+    cleanup_required = not args.eval_only and args.checkpoint is None
+    if cleanup_required:
         # only rank 0 should clear existing checkpoints to avoid race conditions
         if env.rank == 0 and checkpoint_dir.exists():
             for item in checkpoint_dir.iterdir():
@@ -426,12 +442,19 @@ elif env.config.jet.jet_method_name == "LearningBased":
     else:
         agent = None
 
+    if args.checkpoint is not None and not args.eval_only:
+        initial_ckpt = resolve_checkpoint_path(args.checkpoint, args.tag, checkpoint_dir, "best")
+        if rank == 0:
+            agent.load_checkpoint(initial_ckpt)
+        comm.Barrier()
+
     if args.eval_only:
-        ckpt = args.checkpoint if args.checkpoint is not None else Path(env.config.jet.jet_params["checkpoint_dir"]) / "best"
+        ckpt = resolve_checkpoint_path(args.checkpoint, args.tag, checkpoint_dir, "best")
         evaluate(env, agent, ckpt)
     else:
         best_ckpt = train(env, agent)
-        evaluate(env, agent, best_ckpt)
+        if not args.train_only:
+            evaluate(env, agent, best_ckpt)
     env.close()
 
 else:

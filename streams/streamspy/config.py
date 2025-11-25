@@ -59,12 +59,17 @@ class Mpi():
         return Mpi(x_split, z_split)
 
 class Temporal():
-    def __init__(self, num_iter: int, cfl: float, dt_control: int, print_control: int, io_type: int, span_average_io_steps: int, full_flowfield_io_steps: Optional[int], fixed_dt: Optional[float]):
-        self.num_iter     = num_iter 
+    def __init__(self, num_iter: int, cfl: float, dt_control: int, print_control: int, io_type: int,
+            restart_flag: int, disable_restart_io: bool, dtsave_restart: float,
+            span_average_io_steps: int, full_flowfield_io_steps: Optional[int], fixed_dt: Optional[float]):
+        self.num_iter     = num_iter
         self.cfl          = cfl
         self.dt_control   = dt_control 
         self.print_control= print_control
         self.io_type      = io_type
+        self.restart_flag = restart_flag
+        self.disable_restart_io = disable_restart_io
+        self.dtsave_restart = dtsave_restart
 
         # number of steps between outputting full 3D vectorfields of the flowfield
         self.full_flowfield_io_steps = full_flowfield_io_steps
@@ -81,14 +86,17 @@ class Temporal():
         cfl = 0.75
         dt_control = 1
         print_control = 1
-        io_type = 2
+        restart_flag = json_config.get("restart_flag", 0)
+        disable_restart_io = json_config.get("disable_restart_io", False)
+        io_type = 0 if disable_restart_io else 2
+        dtsave_restart = json_config.get("dtsave_restart", 50.0)
 
         fixed_dt = json_config.get("fixed_dt")
 
         span_average_io_steps = json_config["span_average_io_steps"]
         full_flowfield_io_steps = json_config.get("python_flowfield_steps")
 
-        return Temporal(num_iter, cfl, dt_control, print_control, io_type, span_average_io_steps, full_flowfield_io_steps, fixed_dt)
+        return Temporal(num_iter, cfl, dt_control, print_control, io_type, restart_flag, disable_restart_io, dtsave_restart, span_average_io_steps, full_flowfield_io_steps, fixed_dt)
 
 class Physics():
     def __init__(self, mach:float, reynolds_friction:float, temp_ratio: float, visc_type:int, Tref: float, turb_inflow: float ):

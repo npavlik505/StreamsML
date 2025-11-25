@@ -13,6 +13,20 @@ subroutine wrap_setup() bind(C, name="wrap_setup")
     call setup()
 end subroutine wrap_setup
 
+subroutine wrap_set_restart(restart_flag, io_type_in, dtsave_restart_in) bind(C, name="wrap_set_restart")
+    use iso_c_binding
+    !f2py intent(c) wrap_set_restart
+    use mod_streams, only: idiski, io_type, dtsave_restart
+    implicit none
+    integer, intent(in) :: restart_flag
+    integer, intent(in) :: io_type_in
+    real(8), intent(in) :: dtsave_restart_in
+
+    idiski = restart_flag
+    io_type = io_type_in
+    dtsave_restart = dtsave_restart_in
+end subroutine wrap_set_restart
+
 subroutine wrap_init_solver() bind(C, name="wrap_init_solver")
     use iso_c_binding
     !f2py intent(c) wrap_init_solver

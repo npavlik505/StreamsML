@@ -385,16 +385,33 @@ class StreamsGymEnv(gymnasium.Env):
                 pass
 
         # Reinitialize solver data structures.
-        streams.wrap_setup()
-        streams.wrap_init_solver()
+        restart_flag = int(self.config.temporal.restart_flag)
+        io_type = int(self.config.temporal.io_type)
+        dtsave_restart = float(self.config.temporal.dtsave_restart)
+
+        if self.config.jet.jet_method_name == "LearningBased" and restart_flag > 0:
+            # For learning-based runs we need to load the provided restart files
+            # but avoid overwriting them with new checkpoints.  We therefore
+            # enable restart I/O for initialization (io_type 1/2), then disable
+            # it immediately afterward.
+            read_io_type = io_type if io_type != 0 else 2
+            streams.wrap_set_restart(restart_flag, read_io_type, dtsave_restart)
+            streams.wrap_setup()
+            streams.wrap_init_solver()
+            # Disable further restart writes while leaving the solver running
+            streams.wrap_set_restart(0, 0, dtsave_restart)
+        else:
+            streams.wrap_set_restart(restart_flag, io_type, dtsave_restart)
+            streams.wrap_setup()
+            streams.wrap_init_solver()
         self.current_time = 0.0
         self.step_count = 0
 
     # Gym Environment: Restart
     def reset(self, *, seed=None, options=None):
         """
-        Re‐initializes the STREAmS solver to a 'cold start' (no previous steps
-        taken), then returns the initial span‑averaged streamwise velocity over
+        Re‐initializes the STREAmS solver to either a 'cold start' (no previous steps
+        taken), or a user-provided restart point (via restart files) then returns the initial span‑averaged streamwise velocity over
         the slot as the observation.
         """
         if self.rank == 0:
