@@ -58,7 +58,7 @@ config:
 
 	apptainer exec ./streams.sif /usr/local/bin/streams-utils \
 		config-generator {{config_output}} {{streams_flow_type}} \
-		--steps 32 \
+		--steps 50 \
 		--reynolds-number 200 \
 		--mach-number 2.28 \
 		--x-divisions 600 \
@@ -70,13 +70,21 @@ config:
 		--z-length 3.8 \
 		--rly-wr 2.5 \
 		--mpi-x-split 4 \
-		--span-average-io-steps 10 \
+		--span-average-io-steps 1 \
 		--probe-io-steps 0 \
 		--python-flowfield-steps 10 \
 		--use-python \
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
-		none \
+		--restart-flag 1 \
+		--disable-restart-io \
+		--dtsave-restart 3.0 \
+		open-loop constant \
+		    --slot-start 100 \
+		    --slot-end 149 \
+		    --amplitude 1.0 \
+
+
 		
 	cat {{config_output}}
 
@@ -96,24 +104,31 @@ run:
         $STREAMS_UTILS_DIR/streams.sif \
         /usr/local/bin/streams-utils run-container
 
+# ADDITIONAL RUN OPTIONS (LearningBased ONLY)
+# To evaluate existing parameters: Append the --eval-only AND --checkpoint to the end of the run recipe (i.e. under /usr/local/...).
+# To train w/o evaluation, starting without (or with) existing parameters: Append the --train-only (AND --checkpoint) to the end of the run recipe (i.e. under /usr/local/...). 
+#	  --eval-only \
+#	  --train-only \
+#	  --checkpoint "/checkpoints/{{checkpoint_tag}}"
 
-eval:
-	set -eu
-	: "${STREAMS_DIR:?set STREAMS_DIR}"
-	: "${STREAMS_UTILS_DIR:?set STREAMS_UTILS_DIR}"
-	test -f "$STREAMS_UTILS_DIR/streams.sif"
 
-	mkdir -p "{{input_dir}}" "{{dist_dir}}"
-
-	cp {{config_output}} "{{input_dir}}/input.json"
-	cp {{database_bl}} "{{input_dir}}/database_bl.dat"
-
-	apptainer exec --nv \
-	  --bind "{{dist_dir}}:/distribute_save,{{input_dir}}:/input,$STREAMS_DIR/streamspy:/runtimesolver,{{checkpoint}}:/checkpoints" \
-	  "$STREAMS_UTILS_DIR/streams.sif" \
-	  /usr/local/bin/streams-utils run-container \
-	  --eval-only \
-	  --checkpoint "/checkpoints/{{checkpoint_tag}}"
+#eval:
+#	set -eu
+#	: "${STREAMS_DIR:?set STREAMS_DIR}"
+#	: "${STREAMS_UTILS_DIR:?set STREAMS_UTILS_DIR}"
+#	test -f "$STREAMS_UTILS_DIR/streams.sif"
+#
+#	mkdir -p "{{input_dir}}" "{{dist_dir}}"
+#
+#	cp {{config_output}} "{{input_dir}}/input.json"
+#	cp {{database_bl}} "{{input_dir}}/database_bl.dat"
+#
+#	apptainer exec --nv \
+#	  --bind "{{dist_dir}}:/distribute_save,{{input_dir}}:/input,$STREAMS_DIR/streamspy:/runtimesolver,{{checkpoint}}:/checkpoints" \
+#	  "$STREAMS_UTILS_DIR/streams.sif" \
+#	  /usr/local/bin/streams-utils run-container \
+#	  --eval-only \
+#	  --checkpoint "/checkpoints/{{checkpoint_tag}}"
 
 #analysis:
 #        apptainer exec --nv \

@@ -133,6 +133,18 @@ pub(crate) struct ConfigGenerator {
     /// If not present, no 3D flowfields will be written
     pub(crate) snapshots_3d: bool,
 
+    #[clap(long, default_value_t = 0, value_parser = clap::value_parser!(u8).range(0..=1))]
+    /// restart flag (0 => cold start, 1 => restart)
+    pub(crate) restart_flag: u8,
+
+    #[clap(long)]
+    /// disable restart IO output (sets io_type to 0 instead of 2)
+    pub(crate) disable_restart_io: bool,
+
+    #[clap(long, default_value_t = 2.5, value_parser = positive_f64)]
+    /// interval for writing restart files (must be positive)
+    pub(crate) dtsave_restart: f64,
+
     #[clap(long)]
     /// save output to json format
     pub(crate) json: bool,
@@ -208,6 +220,9 @@ impl ConfigGenerator {
             span_average_io_steps: 100,
             blowing_bc: JetActuatorCli::None,
             snapshots_3d: true,
+            restart_flag: 0,
+            disable_restart_io: false,
+            dtsave_restart: 2.5,
             json: false,
             use_python: false,
             fixed_dt: None,
@@ -239,6 +254,9 @@ impl ConfigGenerator {
             span_average_io_steps,
             blowing_bc,
             snapshots_3d,
+            restart_flag,
+            disable_restart_io,
+            dtsave_restart,
             use_python,
             fixed_dt,
             python_flowfield_steps,
@@ -271,6 +289,9 @@ impl ConfigGenerator {
             blowing_bc,
             snapshots_3d,
             use_python,
+            restart_flag,
+            disable_restart_io,
+            dtsave_restart,
             fixed_dt,
             python_flowfield_steps,
             rly_wr,
@@ -281,6 +302,18 @@ impl ConfigGenerator {
             sensor_threshold,
             shock_impingement,
         }
+    }
+}
+
+fn positive_f64(val: &str) -> Result<f64, String> {
+    let parsed: f64 = val
+        .parse()
+        .map_err(|_| format!("`{val}` is not a valid floating point number"))?;
+
+    if parsed <= 0.0 {
+        Err(format!("{parsed} must be positive"))
+    } else {
+        Ok(parsed)
     }
 }
 
@@ -554,7 +587,7 @@ pub(crate) struct DdpgArgs {
     #[clap(long, default_value_t = 10)]
     pub(crate) train_episodes: usize,
 
-    #[clap(long, default_value = "/distribute_save/RL_metrics/training.h5")]
+    #[clap(long, default_value = "/RL_metrics/training.h5")]
     pub(crate) training_output: Option<String>,
     
     #[clap(long, default_value_t = 10)]
@@ -563,13 +596,13 @@ pub(crate) struct DdpgArgs {
     #[clap(long, default_value_t = 1000)]
     pub(crate) eval_max_steps:     usize,
     
-    #[clap(long, default_value = "/distribute_save/RL_metrics/evaluation.h5")]
+    #[clap(long, default_value = "/RL_metrics/evaluation.h5")]
     pub(crate) eval_output:  String,
     
     #[clap(long, default_value_t = 1)]
     pub(crate) checkpoint_interval: usize,
     
-    #[clap(long, default_value = "/distribute_save/RL_metrics/checkpoint")]
+    #[clap(long, default_value = "/RL_metrics/checkpoint")]
     pub(crate) checkpoint_dir: String,
     
     #[clap(long, default_value_t = 42)]   

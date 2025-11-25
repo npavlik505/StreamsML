@@ -90,6 +90,10 @@ pub(crate) fn _config_generator(config: &Config, output_path: PathBuf) -> anyhow
     } else {
         CFL
     };
+    
+    let restart_io_type = if config.disable_restart_io { 0 } else { 2 };
+    let restart_flag = config.restart_flag;
+    let dtsave_restart = config.dtsave_restart;
 
     let output = format!(
         r#"!=============================================================
@@ -129,7 +133,7 @@ pub(crate) fn _config_generator(config: &Config, output_path: PathBuf) -> anyhow
   {shock_sensitivity}               {shock_imp}             {angle}              0.
       
  restart   num_iter   cfl   dt_control  print_control  io_type
-   0        {steps}      {cfl}      1       1              2
+   {restart_flag}        {steps}      {cfl}      1       1              {restart_io_type}
       
  Mach      Reynolds (friction)  temp_ratio   visc_type   Tref (dimensional)   turb_inflow
  {mach}      {re}                   1.            2         160.                0.75
@@ -141,7 +145,7 @@ pub(crate) fn _config_generator(config: &Config, output_path: PathBuf) -> anyhow
    10. 20. 30. 35. 40. 45. 50. 55. 60. 65.
  
  dtsave dtsave_restart  enable_plot3d   enable_vtk
-  2.5       2.5                0          {snapshots_3d}
+  2.5       {dtsave_restart}                0          {snapshots_3d}
 
  rand_type
    -1
@@ -169,12 +173,15 @@ sbli_blowing_bc        slot_start_x_global     slot_end_x_global
         sbli_blowing_bc = config.blowing_bc.blowing_bc_as_streams_int(),
         snapshots_3d = config.snapshots_3d as usize,
         cfl = cfl,
+        restart_io_type = restart_io_type,
         nymax_wr = config.nymax_wr,
         rly_wr = config.rly_wr,
         slot_start = config.blowing_bc.slot_start_as_streams_int(),
         slot_end = config.blowing_bc.slot_end_as_streams_int(),
         shock_sensitivity = config.sensor_threshold,
-        shock_imp = config.shock_impingement
+        shock_imp = config.shock_impingement,
+        restart_flag = restart_flag,
+        dtsave_restart = dtsave_restart
     );
 
     std::fs::write(&output_path, output.as_bytes())
@@ -256,6 +263,15 @@ pub(crate) struct Config {
     ///
     /// If not present, no 3D flowfields will be written
     pub(crate) snapshots_3d: bool,
+    
+    /// restart flag (0 => cold start, 1 => restart)
+    pub(crate) restart_flag: u8,
+
+    /// set io_type to 0 in the solver input (disables restart IO)
+    pub(crate) disable_restart_io: bool,
+
+    /// interval for writing restart files (must be positive)
+    pub(crate) dtsave_restart: f64,
 
     /// run the python solver with bindings, not the fortran solver
     pub(crate) use_python: bool,
@@ -310,6 +326,20 @@ impl Config {
 
         if let Some(gpu_mem) = max_gpu_mem {
             self.check_gpu_mem(gpu_mem)?;
+        }
+
+        if self.restart_flag > 1 {
+            return Err(ConfigError::Custom(format!(
+                "restart flag ({}) must be either 0 or 1",
+                self.restart_flag
+            )));
+        }
+
+        if self.dtsave_restart <= 0.0 {
+            return Err(ConfigError::Custom(format!(
+                "dtsave_restart ({}) must be positive",
+                self.dtsave_restart
+            )));
         }
 
         // from config file
