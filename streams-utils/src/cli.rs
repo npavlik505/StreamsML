@@ -877,6 +877,10 @@ pub(crate) struct RunContainer {
     pub(crate) eval_only: bool,
 
     #[clap(long)]
+    /// skip evaluation and only run training
+    pub(crate) train_only: bool,
+
+    #[clap(long)]
     /// path to checkpoint to load for evaluation
     pub(crate) checkpoint: Option<PathBuf>,
 }
@@ -906,6 +910,10 @@ pub(crate) struct RunLocal {
     #[clap(long)]
     /// skip training and only run evaluation
     pub(crate) eval_only: bool,
+
+    #[clap(long)]
+    /// skip evaluation and only run training
+    pub(crate) train_only: bool,
 
     #[clap(long)]
     /// path to checkpoint to load for evaluation

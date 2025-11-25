@@ -73,7 +73,7 @@ impl Solver {
         Ok(())
     }
 
-    fn run(&self, python_mount: String, eval_only: bool, checkpoint: Option<PathBuf>) -> Result<()> {
+    fn run(&self, python_mount: String, eval_only: bool, train_only: bool, checkpoint: Option<PathBuf>) -> Result<()> {
         let sh = Shell::new()?;
 
         let results_path = &self.dist_save;
@@ -100,6 +100,9 @@ impl Solver {
 
         if eval_only {
             exec = exec.arg("--eval-only");
+        }
+        if train_only {
+            exec = exec.arg("--train-only");
         }
         if let Some(ckpt) = checkpoint.as_ref() {
             exec = exec.arg("--checkpoint").arg(ckpt);
@@ -134,7 +137,7 @@ pub(crate) fn run_local(args: cli::RunLocal) -> Result<()> {
         "".to_string()
     };
 
-    solver.run(python_mount, args.eval_only, args.checkpoint)?;
+    solver.run(python_mount, args.eval_only, args.train_only, args.checkpoint)?;
 
     Ok(())
 }

@@ -63,6 +63,9 @@ pub(crate) fn run_container(args: cli::RunContainer) -> anyhow::Result<()> {
         if args.eval_only {
             exec = exec.arg("--eval-only");
         }
+        if args.train_only {
+            exec = exec.arg("--train-only");
+        }
         if let Some(ckpt) = args.checkpoint.as_ref() {
             exec = exec.arg("--checkpoint").arg(ckpt);
         }
