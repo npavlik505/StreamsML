@@ -502,21 +502,13 @@ class StreamsGymEnv(gymnasium.Env):
         self._delay_actuation_queue.append({"actuation": action, "convection": 0.0})
         self._delay_observation_queue.append({"observation": observation})
 
-        rho_slice = streams.wrap_get_w_avzg_slice(
-            self._obs_xstart,
-            self._obs_xend,
-            self._obs_ystart,
-            self._obs_yend,
-            1,
-        )
-        rhou_slice = streams.wrap_get_w_avzg_slice(
+        u_slice = streams.wrap_get_w_avzg_slice(
             self._obs_xstart,
             self._obs_xend,
             self._obs_ystart,
             self._obs_yend,
             2,
-        )
-        u_slice = rhou_slice[0] / rho_slice[0]
+        )[0]
         Uc = float(np.mean(u_slice))
 
         dt = float(streams.wrap_get_dtglobal())
@@ -598,22 +590,13 @@ class StreamsGymEnv(gymnasium.Env):
         tau_post_jet = tau_global[self.slot_end:self.config.grid.nx]
 
         # --- Option A: reference/edge (default) ---
-        
-        rho_slice = streams.wrap_get_w_avzg_slice(
-            self._obs_xstart,
-            self._obs_xend,
-            self._obs_ystart,
-            self._obs_yend,
-            1,
-        )
-        rhou_slice = streams.wrap_get_w_avzg_slice(
+        u_slice = streams.wrap_get_w_avzg_slice(
             self._obs_xstart,
             self._obs_xend,
             self._obs_ystart,
             self._obs_yend,
             2,
-        )
-        u_slice = rhou_slice[0] / rho_slice[0]
+        )[0]
         Uc = float(np.mean(u_slice))
 
         dt = float(streams.wrap_get_dtglobal())
