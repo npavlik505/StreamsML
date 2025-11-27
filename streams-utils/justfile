@@ -76,29 +76,35 @@ config:
 		--use-python \
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
-		--restart-flag 0 \
-		--dtsave-restart 3.0 \
+		--restart-flag 1 \
+		--dtsave-restart 13.0 \
+		--fixed_dt .0008439 \
+		--shock-angle 8.0 \
+		--shock-impingement 15.0 \
 		learning-based ddpg \
 		    --slot-start 100 \
 		    --slot-end 149 \
 		    --obs-type v \
-		    --obs-xstart 1 \
-		    --obs-xend 50 \
+		    --obs-xstart 80 \
+		    --obs-xend 95 \
 		    --obs-ystart 1 \
-		    --obs-yend 50 \
-		    --lag-steps 100 \
+		    --obs-yend 25 \
+		    --lag-steps 20 \
+		    --sensor-actuator-delay \
 		    --train-episodes 1 \
 		    --training-output {{training}} \
-		    --eval-episodes 2 \
-		    --eval-max-steps 50 \
+		    --eval-episodes 1 \
+		    --eval-max-steps 50000 \
 		    --eval-output {{eval}} \
-		    --checkpoint-interval 5 \
+		    --checkpoint-interval 1 \
 		    --checkpoint-dir {{checkpoint}} \
 		    --amplitude 1.0 \
+		    --hidden-width 256 \
 		    --learning-rate 0.0003 \
 		    --gamma 0.99 \
 		    --tau 0.005 \
-		    --buffer-size 100000
+		    --batch-size 256 \
+		    --buffer-size 100000 \
 
 
 		

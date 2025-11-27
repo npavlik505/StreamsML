@@ -84,7 +84,7 @@ class StreamsGymEnv(gymnasium.Env):
         # ``tauw_shape`` is the number of wall points owned by this MPI rank.
         # The global observation is assembled by gathering data from all ranks in `reset` and `step`.
         self.tauw_shape = streams.wrap_get_tauw_x_shape()
-        
+
         self._has_values = False
         
         jet_params = self.config.jet.jet_params
@@ -220,6 +220,13 @@ class StreamsGymEnv(gymnasium.Env):
                                            shape=(1,),
                                            dtype=np.float32)
 
+
+            self.rho_ref = 1.0
+            self.U_ref   = float(self.config.physics.mach)  # if a_ref=1 in nondim
+            self.Cf_den = 0.5 * self.rho_ref * (self.U_ref**2)
+            self.tau_weight = 1/jet_params["lag_steps"]
+
+
         # Step counting and time
         self.step_count = 0
         self.max_episode_steps = int(self.config.temporal.num_iter)
@@ -239,8 +246,11 @@ class StreamsGymEnv(gymnasium.Env):
                 # TODO: Calculate lag_steps based on convection jet and let user specify their own lag_steps to overwrite calculation if specified
                 self.action_queue = deque()
                 self.lag_steps = jet_params["lag_steps"]
-                self.lambda_trace = 1.0 - (1.0 / self.lag_steps)
-
+                # Exponential decay so the fluid directly under the jet is weighted
+                # higher than previously traversed segments when accumulating shear
+                # rewards.
+                self.lambda_decay = float(jet_params.get("lambda_decay", 1.0))
+                self.lambda_trace = np.exp(-self.lambda_decay* np.arange(self.lag_steps, dtype=np.float64))
                 # State for convection-delayed actuation
                 self._delay_actuation_queue = deque()
                 self._delay_observation_queue = deque()
@@ -385,33 +395,16 @@ class StreamsGymEnv(gymnasium.Env):
                 pass
 
         # Reinitialize solver data structures.
-        restart_flag = int(self.config.temporal.restart_flag)
-        io_type = int(self.config.temporal.io_type)
-        dtsave_restart = float(self.config.temporal.dtsave_restart)
-
-        if self.config.jet.jet_method_name == "LearningBased" and restart_flag > 0:
-            # For learning-based runs we need to load the provided restart files
-            # but avoid overwriting them with new checkpoints.  We therefore
-            # enable restart I/O for initialization (io_type 1/2), then disable
-            # it immediately afterward.
-            read_io_type = io_type if io_type != 0 else 2
-            streams.wrap_set_restart(restart_flag, read_io_type, dtsave_restart)
-            streams.wrap_setup()
-            streams.wrap_init_solver()
-            # Disable further restart writes while leaving the solver running
-            streams.wrap_set_restart(0, 0, dtsave_restart)
-        else:
-            streams.wrap_set_restart(restart_flag, io_type, dtsave_restart)
-            streams.wrap_setup()
-            streams.wrap_init_solver()
+        streams.wrap_setup()
+        streams.wrap_init_solver()
         self.current_time = 0.0
         self.step_count = 0
 
     # Gym Environment: Restart
     def reset(self, *, seed=None, options=None):
         """
-        Re‐initializes the STREAmS solver to either a 'cold start' (no previous steps
-        taken), or a user-provided restart point (via restart files) then returns the initial span‑averaged streamwise velocity over
+        Re‐initializes the STREAmS solver to a 'cold start' (no previous steps
+        taken), then returns the initial span‑averaged streamwise velocity over
         the slot as the observation.
         """
         if self.rank == 0:
@@ -601,25 +594,50 @@ class StreamsGymEnv(gymnasium.Env):
         else:
             tau = np.empty((0,), dtype=np.float64)
         tau_global = self._gather_nonempty(tau)
-        tau_mean = float(np.mean(tau_global))  # ⟨τ_w⟩ over the wall
+        #tau_mean = float(np.mean(tau_global))  # ⟨τ_w⟩ over the wall
+        tau_post_jet = tau_global[self.slot_end:self.config.grid.nx]
 
         # --- Option A: reference/edge (default) ---
-        rho_ref = 1.0                       # typical nondimensional choice
-        U_ref   = float(self.config.physics.mach)  # if a_ref=1 in your nondim
-        den = 0.5 * rho_ref * (U_ref**2)
         
-        Cf = tau_mean / max(den, 1e-30)
-        r_t = -Cf  # reward is negative skin friction coefficient
+        rho_slice = streams.wrap_get_w_avzg_slice(
+            self._obs_xstart,
+            self._obs_xend,
+            self._obs_ystart,
+            self._obs_yend,
+            1,
+        )
+        rhou_slice = streams.wrap_get_w_avzg_slice(
+            self._obs_xstart,
+            self._obs_xend,
+            self._obs_ystart,
+            self._obs_yend,
+            2,
+        )
+        u_slice = rhou_slice[0] / rho_slice[0]
+        Uc = float(np.mean(u_slice))
+
+        dt = float(streams.wrap_get_dtglobal())
+        dx = self.config.length.lx / self.config.grid.nx
+
+        num_valid_gp = min(self.lag_steps, tau_post_jet.size)
+        r_t = -self.tau_weight * (tau_post_jet[:num_valid_gp] / max(self.Cf_den, 1e-30))
 
         if self.obs_defined is not None:
-            # Track actions with an eligibility trace to delay rewards
-            self.action_queue.append({"eligibility": 1.0, "accum_reward": 0.0})
+            # Track actions to appropriately calculate and delay rewards
+            self.action_queue.append({"post_actuation_steps": 0.0, "accum_reward": 0.0})
 
             for entry in self.action_queue:
-                entry["accum_reward"] += entry["eligibility"] * r_t
-                entry["eligibility"] *= self.lambda_trace
+                entry["post_actuation_steps"] += 1.0
+                convection = np.ceil(Uc*dt*entry["post_actuation_steps"]/dx)
+                step_reward = 0.0
+                convection = int(min(convection, len(r_t), len(self.lambda_trace)))
+                if convection:
+                    r_slice = r_t[:convection][::-1]
+                    weight_slice = self.lambda_trace[:convection]
+                    step_reward += float(np.dot(weight_slice, r_slice))
+                entry["accum_reward"] += step_reward
 
-            if len(self.action_queue) > self.lag_steps:
+            if (self.action_queue and self.action_queue[0]["post_actuation_steps"] >= self.lag_steps):
                 reward = self.action_queue.popleft()["accum_reward"]
             else:
                 reward = 0.0
