@@ -58,7 +58,7 @@ config:
 
 	apptainer exec ./streams.sif /usr/local/bin/streams-utils \
 		config-generator {{config_output}} {{streams_flow_type}} \
-		--steps 50 \
+		--steps 2000 \
 		--reynolds-number 200 \
 		--mach-number 2.28 \
 		--x-divisions 600 \
@@ -78,23 +78,23 @@ config:
 		--sensor-threshold 0.1 \
 		--restart-flag 1 \
 		--dtsave-restart 13.0 \
-		--fixed_dt .0008439 \
+		--fixed-dt .0008439 \
 		--shock-angle 8.0 \
 		--shock-impingement 15.0 \
 		learning-based ddpg \
-		    --slot-start 100 \
-		    --slot-end 149 \
+		    --slot-start 250 \
+		    --slot-end 299 \
 		    --obs-type v \
-		    --obs-xstart 80 \
-		    --obs-xend 95 \
+		    --obs-xstart 230 \
+		    --obs-xend 245 \
 		    --obs-ystart 1 \
 		    --obs-yend 25 \
-		    --lag-steps 20 \
+		    --lag-steps 1000 \
 		    --sensor-actuator-delay \
 		    --train-episodes 1 \
 		    --training-output {{training}} \
 		    --eval-episodes 1 \
-		    --eval-max-steps 50000 \
+		    --eval-max-steps 100 \
 		    --eval-output {{eval}} \
 		    --checkpoint-interval 1 \
 		    --checkpoint-dir {{checkpoint}} \
@@ -124,7 +124,8 @@ run:
     apptainer exec --nv \
         --bind "{{dist_dir}}:/distribute_save,{{input_dir}}:/input,$STREAMS_DIR/streamspy:/runtimesolver" \
         $STREAMS_UTILS_DIR/streams.sif \
-        /usr/local/bin/streams-utils run-container
+        /usr/local/bin/streams-utils run-container \
+        --train-only
 
 # ADDITIONAL RUN OPTIONS (LearningBased ONLY)
 # To evaluate existing parameters: Append the --eval-only AND --checkpoint to the end of the run recipe (i.e. under /usr/local/...).

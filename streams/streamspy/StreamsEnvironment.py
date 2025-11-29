@@ -84,6 +84,8 @@ class StreamsGymEnv(gymnasium.Env):
         # ``tauw_shape`` is the number of wall points owned by this MPI rank.
         # The global observation is assembled by gathering data from all ranks in `reset` and `step`.
         self.tauw_shape = streams.wrap_get_tauw_x_shape()
+        
+        
 
         self._has_values = False
         
@@ -136,7 +138,7 @@ class StreamsGymEnv(gymnasium.Env):
             self._obs_yend = int(jet_params["obs_yend"])
             if self.rank == 0:
                 print(f"Obs space,  X: {self._obs_xstart} to {self._obs_xend} | Y: {self._obs_ystart} to {self._obs_yend}")
-            
+                
             # Determine the portion of the observation window owned by this MPI
             # rank.  Ranks whose local domain does not intersect the requested
             # region return an empty slice.
@@ -190,6 +192,11 @@ class StreamsGymEnv(gymnasium.Env):
         x_mesh = streams.wrap_get_x(self.config.x_start(), self.config.x_end()) 
         y_mesh = streams.wrap_get_y(self.config.y_start(), self.config.y_end())
         z_mesh = streams.wrap_get_z(self.config.z_start(), self.config.z_end())
+
+        # Find wall-normal grid point associated with 1.2 inlet boundary layer thickness for reward calc 
+        y_grid = streams.wrap_get_y(self.config.y_start(), self.config.y_end())
+        y_phys = y_grid[y_grid >= 0]
+        self.y_extent = np.max(np.where(y_phys <= 1.2)[0])
 
         # Initialize actuator
         self.actuator = jet_actuator.init_actuator(self.rank, self.config)
@@ -250,7 +257,7 @@ class StreamsGymEnv(gymnasium.Env):
                 # higher than previously traversed segments when accumulating shear
                 # rewards.
                 self.lambda_decay = float(jet_params.get("lambda_decay", 1.0))
-                self.lambda_trace = np.exp(-self.lambda_decay* np.arange(self.lag_steps, dtype=np.float64))
+                self.lambda_trace = np.exp(-self.lambda_decay* np.arange(self.config.grid.nx - self.slot_end, dtype=np.float64))
                 # State for convection-delayed actuation
                 self._delay_actuation_queue = deque()
                 self._delay_observation_queue = deque()
@@ -270,6 +277,7 @@ class StreamsGymEnv(gymnasium.Env):
         self._obs_xend = int(xend)
         self._obs_ystart = int(ystart)
         self._obs_yend = int(yend)
+
 
         nx_local = self.config.nx_mpi()
         global_x_start = self.rank * nx_local + 1
@@ -590,30 +598,56 @@ class StreamsGymEnv(gymnasium.Env):
         tau_post_jet = tau_global[self.slot_end:self.config.grid.nx]
 
         # --- Option A: reference/edge (default) ---
-        u_slice = streams.wrap_get_w_avzg_slice(
-            self._obs_xstart,
-            self._obs_xend,
-            self._obs_ystart,
-            self._obs_yend,
-            2,
-        )[0]
-        Uc = float(np.mean(u_slice))
-
         dt = float(streams.wrap_get_dtglobal())
         dx = self.config.length.lx / self.config.grid.nx
-
-        num_valid_gp = min(self.lag_steps, tau_post_jet.size)
-        r_t = -self.tau_weight * (tau_post_jet[:num_valid_gp] / max(self.Cf_den, 1e-30))
+        dy = self.config.length.ly / self.config.grid.ny
+        r_t = -self.tau_weight * (tau_post_jet / max(self.Cf_den, 1e-30))
 
         if self.obs_defined is not None:
+            convection_profile = np.zeros(tau_post_jet.size, dtype=np.float64)
+            if tau_post_jet.size > 0:
+                # convection_slice = streams.wrap_get_w_avzg_slice(self.slot_end, (self.slot_end + tau_post_jet.size), 4, max(5, int(np.ceil(.5/dy))), 2)[0]
+                # convection_profile = np.mean(convection_slice, axis=1)
+                # Consider replacing (ind. process operation -> allgather) with MPI handling in mod_api.F90
+                global_x_start = self.slot_end
+                global_x_end = self.slot_end + tau_post_jet.size
+                # y_extent = max(5, int(np.ceil(1 / dy)))
+                # account for non-uniform y grid
+                y_grid = streams.wrap_get_y(self.config.y_start(), self.config.y_end())
+                y_phys = y_grid[y_grid >= 0]
+                self.y_extent = np.max(np.where(y_phys <= 1.2)[0])
+                #print(f"y_phys is {y_phys}")
+                #print(f"y_extent is {self.y_extent}")
+
+                nx_local = self.config.nx_mpi()
+                local_x_begin = self.rank * nx_local + 1
+                local_x_finish = local_x_begin + nx_local - 1
+                local_x_start = max(global_x_start, local_x_begin)
+                local_x_end = min(global_x_end, local_x_finish)
+
+                if local_x_start <= local_x_end:
+                    local_slice = streams.wrap_get_w_avzg_slice(local_x_start, local_x_end, 4, self.y_extent, 2 )[0]
+                else:
+                    # Empty slice for ranks with no overlap.
+                    local_slice = np.zeros((0, self.y_extent), dtype=np.float64)
+
+                gathered_slices = self.comm.allgather(local_slice)
+                non_empty = [slc for slc in gathered_slices if slc.size > 0]
+                if non_empty:
+                    convection_slice = np.concatenate(non_empty, axis=0)
+                    convection_profile = np.mean(convection_slice, axis=1)
+        
             # Track actions to appropriately calculate and delay rewards
-            self.action_queue.append({"post_actuation_steps": 0.0, "accum_reward": 0.0})
+            self.action_queue.append({"post_actuation_steps": 0.0, "accum_reward": 0.0, "x_index": 0.0})
 
             for entry in self.action_queue:
                 entry["post_actuation_steps"] += 1.0
-                convection = np.ceil(Uc*dt*entry["post_actuation_steps"]/dx)
+                if tau_post_jet.size > 0:
+                    convection_index = min(int(entry["x_index"]), tau_post_jet.size - 1)
+                    Uc_local = convection_profile[convection_index]
+                    entry["x_index"] += (Uc_local * dt) / dx
+                convection = int(min(np.ceil(entry["x_index"]), len(r_t)))
                 step_reward = 0.0
-                convection = int(min(convection, len(r_t), len(self.lambda_trace)))
                 if convection:
                     r_slice = r_t[:convection][::-1]
                     weight_slice = self.lambda_trace[:convection]
@@ -621,6 +655,14 @@ class StreamsGymEnv(gymnasium.Env):
                 entry["accum_reward"] += step_reward
 
             if (self.action_queue and self.action_queue[0]["post_actuation_steps"] >= self.lag_steps):
+                
+                ## DEBUG SESSION (BEGIN)
+                #finished_entry = self.action_queue.popleft()
+                #x_convected = finished_entry["x_index"]  # in grid points
+                #print(f"estimated convection is ≈ {x_convected:.2f} grid points")
+                #reward = finished_entry["accum_reward"]
+                ## DEBUG SESSION (END)   
+
                 reward = self.action_queue.popleft()["accum_reward"]
             else:
                 reward = 0.0
