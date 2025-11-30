@@ -581,89 +581,92 @@ class StreamsGymEnv(gymnasium.Env):
         streams.wrap_compute_av()
         streams.wrap_tauw_calculate()
 
-        # Immediate reward based on wall shear stress
-        #if self.tauw_shape > 0:
-        #    tau = streams.wrap_get_tauw_x(self.tauw_shape)
-        #else:
-        #    tau = np.empty((0,), dtype=np.float64)
-        #tau_global = self._gather_nonempty(tau)
-        #r_t = -float(np.sum(tau_global**2))
+        if self.config.jet.jet_method_name == "LearningBased":
+            # Immediate reward based on wall shear stress
+            #if self.tauw_shape > 0:
+            #    tau = streams.wrap_get_tauw_x(self.tauw_shape)
+            #else:
+            #    tau = np.empty((0,), dtype=np.float64)
+            #tau_global = self._gather_nonempty(tau)
+            #r_t = -float(np.sum(tau_global**2))
 
-        if self.tauw_shape > 0:
-            tau = streams.wrap_get_tauw_x(self.tauw_shape)
-        else:
-            tau = np.empty((0,), dtype=np.float64)
-        tau_global = self._gather_nonempty(tau)
-        #tau_mean = float(np.mean(tau_global))  # ⟨τ_w⟩ over the wall
-        tau_post_jet = tau_global[self.slot_end:self.config.grid.nx]
+            if self.tauw_shape > 0:
+                tau = streams.wrap_get_tauw_x(self.tauw_shape)
+            else:
+                tau = np.empty((0,), dtype=np.float64)
+            tau_global = self._gather_nonempty(tau)
+            #tau_mean = float(np.mean(tau_global))  # ⟨τ_w⟩ over the wall
+            tau_post_jet = tau_global[self.slot_end:self.config.grid.nx]
 
-        # --- Option A: reference/edge (default) ---
-        dt = float(streams.wrap_get_dtglobal())
-        dx = self.config.length.lx / self.config.grid.nx
-        dy = self.config.length.ly / self.config.grid.ny
-        r_t = -self.tau_weight * (tau_post_jet / max(self.Cf_den, 1e-30))
+            # --- Option A: reference/edge (default) ---
+            dt = float(streams.wrap_get_dtglobal())
+            dx = self.config.length.lx / self.config.grid.nx
+            dy = self.config.length.ly / self.config.grid.ny
+            r_t = -self.tau_weight * (tau_post_jet / max(self.Cf_den, 1e-30))
 
-        if self.obs_defined is not None:
-            convection_profile = np.zeros(tau_post_jet.size, dtype=np.float64)
-            if tau_post_jet.size > 0:
-                # convection_slice = streams.wrap_get_w_avzg_slice(self.slot_end, (self.slot_end + tau_post_jet.size), 4, max(5, int(np.ceil(.5/dy))), 2)[0]
-                # convection_profile = np.mean(convection_slice, axis=1)
-                # Consider replacing (ind. process operation -> allgather) with MPI handling in mod_api.F90
-                global_x_start = self.slot_end
-                global_x_end = self.slot_end + tau_post_jet.size
-                # y_extent = max(5, int(np.ceil(1 / dy)))
-                # account for non-uniform y grid
-                y_grid = streams.wrap_get_y(self.config.y_start(), self.config.y_end())
-                y_phys = y_grid[y_grid >= 0]
-                self.y_extent = np.max(np.where(y_phys <= 1.2)[0])
-                #print(f"y_phys is {y_phys}")
-                #print(f"y_extent is {self.y_extent}")
-
-                nx_local = self.config.nx_mpi()
-                local_x_begin = self.rank * nx_local + 1
-                local_x_finish = local_x_begin + nx_local - 1
-                local_x_start = max(global_x_start, local_x_begin)
-                local_x_end = min(global_x_end, local_x_finish)
-
-                if local_x_start <= local_x_end:
-                    local_slice = streams.wrap_get_w_avzg_slice(local_x_start, local_x_end, 4, self.y_extent, 2 )[0]
-                else:
-                    # Empty slice for ranks with no overlap.
-                    local_slice = np.zeros((0, self.y_extent), dtype=np.float64)
-
-                gathered_slices = self.comm.allgather(local_slice)
-                non_empty = [slc for slc in gathered_slices if slc.size > 0]
-                if non_empty:
-                    convection_slice = np.concatenate(non_empty, axis=0)
-                    convection_profile = np.mean(convection_slice, axis=1)
-        
-            # Track actions to appropriately calculate and delay rewards
-            self.action_queue.append({"post_actuation_steps": 0.0, "accum_reward": 0.0, "x_index": 0.0})
-
-            for entry in self.action_queue:
-                entry["post_actuation_steps"] += 1.0
+            if self.obs_defined is not None:
+                convection_profile = np.zeros(tau_post_jet.size, dtype=np.float64)
                 if tau_post_jet.size > 0:
-                    convection_index = min(int(entry["x_index"]), tau_post_jet.size - 1)
-                    Uc_local = convection_profile[convection_index]
-                    entry["x_index"] += (Uc_local * dt) / dx
-                convection = int(min(np.ceil(entry["x_index"]), len(r_t)))
-                step_reward = 0.0
-                if convection:
-                    r_slice = r_t[:convection][::-1]
-                    weight_slice = self.lambda_trace[:convection]
-                    step_reward += float(np.dot(weight_slice, r_slice))
-                entry["accum_reward"] += step_reward
+                    # convection_slice = streams.wrap_get_w_avzg_slice(self.slot_end, (self.slot_end + tau_post_jet.size), 4, max(5, int(np.ceil(.5/dy))), 2)[0]
+                    # convection_profile = np.mean(convection_slice, axis=1)
+                    # Consider replacing (ind. process operation -> allgather) with MPI handling in mod_api.F90
+                    global_x_start = self.slot_end
+                    global_x_end = self.slot_end + tau_post_jet.size
+                    # y_extent = max(5, int(np.ceil(1 / dy)))
+                    # account for non-uniform y grid
+                    y_grid = streams.wrap_get_y(self.config.y_start(), self.config.y_end())
+                    y_phys = y_grid[y_grid >= 0]
+                    self.y_extent = np.max(np.where(y_phys <= 1.2)[0])
+                    #print(f"y_phys is {y_phys}")
+                    #print(f"y_extent is {self.y_extent}")
 
-            if (self.action_queue and self.action_queue[0]["post_actuation_steps"] >= self.lag_steps):
-                
-                ## DEBUG SESSION (BEGIN)
-                #finished_entry = self.action_queue.popleft()
-                #x_convected = finished_entry["x_index"]  # in grid points
-                #print(f"estimated convection is ≈ {x_convected:.2f} grid points")
-                #reward = finished_entry["accum_reward"]
-                ## DEBUG SESSION (END)   
+                    nx_local = self.config.nx_mpi()
+                    local_x_begin = self.rank * nx_local + 1
+                    local_x_finish = local_x_begin + nx_local - 1
+                    local_x_start = max(global_x_start, local_x_begin)
+                    local_x_end = min(global_x_end, local_x_finish)
 
-                reward = self.action_queue.popleft()["accum_reward"]
+                    if local_x_start <= local_x_end:
+                        local_slice = streams.wrap_get_w_avzg_slice(local_x_start, local_x_end, 4, self.y_extent, 2 )[0]
+                    else:
+                        # Empty slice for ranks with no overlap.
+                        local_slice = np.zeros((0, self.y_extent), dtype=np.float64)
+
+                    gathered_slices = self.comm.allgather(local_slice)
+                    non_empty = [slc for slc in gathered_slices if slc.size > 0]
+                    if non_empty:
+                        convection_slice = np.concatenate(non_empty, axis=0)
+                        convection_profile = np.mean(convection_slice, axis=1)
+            
+                # Track actions to appropriately calculate and delay rewards
+                self.action_queue.append({"post_actuation_steps": 0.0, "accum_reward": 0.0, "x_index": 0.0})
+
+                for entry in self.action_queue:
+                    entry["post_actuation_steps"] += 1.0
+                    if tau_post_jet.size > 0:
+                        convection_index = min(int(entry["x_index"]), tau_post_jet.size - 1)
+                        Uc_local = convection_profile[convection_index]
+                        entry["x_index"] += (Uc_local * dt) / dx
+                    convection = int(min(np.ceil(entry["x_index"]), len(r_t)))
+                    step_reward = 0.0
+                    if convection:
+                        r_slice = r_t[:convection][::-1]
+                        weight_slice = self.lambda_trace[:convection]
+                        step_reward += float(np.dot(weight_slice, r_slice))
+                    entry["accum_reward"] += step_reward
+
+                if (self.action_queue and self.action_queue[0]["post_actuation_steps"] >= self.lag_steps):
+                    
+                    ## DEBUG SESSION (BEGIN)
+                    #finished_entry = self.action_queue.popleft()
+                    #x_convected = finished_entry["x_index"]  # in grid points
+                    #print(f"estimated convection is ≈ {x_convected:.2f} grid points")
+                    #reward = finished_entry["accum_reward"]
+                    ## DEBUG SESSION (END)   
+
+                    reward = self.action_queue.popleft()["accum_reward"]
+                else:
+                    reward = 0.0
             else:
                 reward = 0.0
         else:
