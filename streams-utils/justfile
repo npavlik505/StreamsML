@@ -32,8 +32,8 @@ build:
 
 
 
-streams_flow_type := "shock-boundary-layer"
-#streams_flow_type := "boundary-layer"
+#streams_flow_type := "shock-boundary-layer"
+streams_flow_type := "boundary-layer"
 
 # build a config json file as input to the solver
 streamspy_dir := "$STREAMS_DIR/streamspy"
@@ -58,8 +58,8 @@ config:
 
 	apptainer exec ./streams.sif /usr/local/bin/streams-utils \
 		config-generator {{config_output}} {{streams_flow_type}} \
-		--steps 2000 \
-		--reynolds-number 200 \
+		--steps 30000 \
+		--reynolds-number 250 \
 		--mach-number 2.28 \
 		--x-divisions 600 \
 		--y-divisions 208 \
@@ -70,31 +70,29 @@ config:
 		--z-length 3.8 \
 		--rly-wr 2.5 \
 		--mpi-x-split 4 \
-		--span-average-io-steps 1 \
+		--span-average-io-steps 10 \
 		--probe-io-steps 0 \
-		--python-flowfield-steps 10 \
+		--python-flowfield-steps 500 \
 		--use-python \
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
 		--restart-flag 1 \
 		--dtsave-restart 13.0 \
 		--fixed-dt .0008439 \
-		--shock-angle 8.0 \
-		--shock-impingement 15.0 \
 		learning-based ddpg \
-		    --slot-start 250 \
-		    --slot-end 299 \
+		    --slot-start 100 \
+		    --slot-end 149 \
 		    --obs-type v \
-		    --obs-xstart 230 \
-		    --obs-xend 245 \
+		    --obs-xstart 80 \
+		    --obs-xend 95 \
 		    --obs-ystart 1 \
 		    --obs-yend 25 \
 		    --lag-steps 1000 \
 		    --sensor-actuator-delay \
-		    --train-episodes 1 \
+		    --train-episodes 4 \
 		    --training-output {{training}} \
 		    --eval-episodes 1 \
-		    --eval-max-steps 100 \
+		    --eval-max-steps 30000 \
 		    --eval-output {{eval}} \
 		    --checkpoint-interval 1 \
 		    --checkpoint-dir {{checkpoint}} \
@@ -121,8 +119,14 @@ run:
     cp {{config_output}} "{{input_dir}}/input.json"
     cp {{database_bl}} "{{input_dir}}/database_bl.dat"
 
+    checkpoint_bind_args=()
+    if [ -d "{{checkpoint}}" ]; then
+        checkpoint_bind_args=(--bind "{{checkpoint}}:/checkpoints")
+    fi
+
     apptainer exec --nv \
         --bind "{{dist_dir}}:/distribute_save,{{input_dir}}:/input,$STREAMS_DIR/streamspy:/runtimesolver" \
+        "${checkpoint_bind_args[@]}" \
         $STREAMS_UTILS_DIR/streams.sif \
         /usr/local/bin/streams-utils run-container \
         --train-only
@@ -130,27 +134,9 @@ run:
 # ADDITIONAL RUN OPTIONS (LearningBased ONLY)
 # To evaluate existing parameters: Append the --eval-only AND --checkpoint to the end of the run recipe (i.e. under /usr/local/...).
 # To train w/o evaluation, starting without (or with) existing parameters: Append the --train-only (AND --checkpoint) to the end of the run recipe (i.e. under /usr/local/...). 
+# Note: If --checkpoint isn't working, double check your path is correctly specified in checkpoint and checkpoint tag, found above the config recipe
 #	  --eval-only \
 #	  --train-only \
-#	  --checkpoint "/checkpoints/{{checkpoint_tag}}"
-
-
-#eval:
-#	set -eu
-#	: "${STREAMS_DIR:?set STREAMS_DIR}"
-#	: "${STREAMS_UTILS_DIR:?set STREAMS_UTILS_DIR}"
-#	test -f "$STREAMS_UTILS_DIR/streams.sif"
-#
-#	mkdir -p "{{input_dir}}" "{{dist_dir}}"
-#
-#	cp {{config_output}} "{{input_dir}}/input.json"
-#	cp {{database_bl}} "{{input_dir}}/database_bl.dat"
-#
-#	apptainer exec --nv \
-#	  --bind "{{dist_dir}}:/distribute_save,{{input_dir}}:/input,$STREAMS_DIR/streamspy:/runtimesolver,{{checkpoint}}:/checkpoints" \
-#	  "$STREAMS_UTILS_DIR/streams.sif" \
-#	  /usr/local/bin/streams-utils run-container \
-#	  --eval-only \
 #	  --checkpoint "/checkpoints/{{checkpoint_tag}}"
 
 #analysis:
