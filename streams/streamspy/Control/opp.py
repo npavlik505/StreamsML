@@ -57,7 +57,7 @@ class controller(BaseController):
         if self.org_motion == "undefined":
             print("organized-motion flag not defined. Sensor window will not be recomputed")
             return
-        elif self.org_motion == "near_wall": 
+        elif self.org_motion == "near-wall": 
             # Averaging across x is killing v magnitude
             #sensor_x_len = math.ceil(((1000/self.TargetReFriction)/self.lx)*self.nx)
             #sensor_x_start = sensor_x_end - sensor_x_len
