@@ -109,6 +109,7 @@ config:
 	cat {{config_output}}
 
 run:
+    #!/usr/bin/env sh
     set -eu
     : "${STREAMS_DIR:?set STREAMS_DIR}"
     : "${STREAMS_UTILS_DIR:?set STREAMS_UTILS_DIR}"
@@ -119,10 +120,8 @@ run:
     cp {{config_output}} "{{input_dir}}/input.json"
     cp {{database_bl}} "{{input_dir}}/database_bl.dat"
 
-    checkpoint_bind_args=()
-    if [ -d "{{checkpoint}}" ]; then
-        checkpoint_bind_args=(--bind "{{checkpoint}}:/checkpoints")
-    fi
+    checkpoint_bind_arg=""
+    if [ -d "{{checkpoint}}" ]; then checkpoint_bind_arg="--bind {{checkpoint}}:/checkpoints"; fi
 
     apptainer exec --nv \
         --bind "{{dist_dir}}:/distribute_save,{{input_dir}}:/input,$STREAMS_DIR/streamspy:/runtimesolver" \
