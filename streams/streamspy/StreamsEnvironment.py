@@ -262,6 +262,10 @@ class StreamsGymEnv(gymnasium.Env):
                 self._delay_actuation_queue = deque()
                 self._delay_observation_queue = deque()
                 self._delay_skip = False
+                self._delay_restored = False
+
+                if self.config.temporal.restart_flag == 1:
+                    self._restore_delay_queues()
 
         if self.rank == 0:
             print(f'[StreamsEnvironment.py] gym environment initialized')
@@ -452,8 +456,12 @@ class StreamsGymEnv(gymnasium.Env):
         # Rest action_queue
         if self.obs_defined is not None:
             self.action_queue.clear()
-            self._delay_actuation_queue.clear()
-            self._delay_observation_queue.clear()
+            if self.config.temporal.restart_flag == 1:
+                self._restore_delay_queues()
+            else:
+                self._delay_actuation_queue.clear()
+                self._delay_observation_queue.clear()
+                self._delay_restored = False
             self._delay_skip = False
 
         # Gym expects a float32 array
@@ -492,12 +500,17 @@ class StreamsGymEnv(gymnasium.Env):
         default_next_obs = _zero_like(observation)
 
         if self.step_count == 0:
-            self._delay_actuation_queue.clear()
-            self._delay_observation_queue.clear()
+            # self._delay_actuation_queue.clear()
+            # self._delay_observation_queue.clear()
             self._delay_skip = False
             contiguous = self._obs_xend == self.slot_start
             overlaps = self._obs_xend > self.slot_start
             self._delay_skip = contiguous or overlaps
+            
+            if self._delay_skip or not getattr(self, "_delay_restored", False):
+                self._delay_actuation_queue.clear()
+                self._delay_observation_queue.clear()
+            
             if self._delay_skip and self.rank == 0:
                 print(
                     f"observation window x: {self._obs_xstart}-{self._obs_xend} must be upstream from actuator x: {self.slot_start}-{self.slot_end}"
@@ -845,10 +858,113 @@ class StreamsGymEnv(gymnasium.Env):
                     pass
         except Exception:
             pass
+
+        self._persist_delay_queues()
         try:
             streams.wrap_finalize()
             if self.rank == 0:
                 print('[StreamsEnvironment.py] streams.wrap_finalize() called')
         except Exception:
             pass
+
+    def _persist_delay_queues(self) -> None:
+        """Write delayed actuation/observation queues for debugging or restart.
+
+        Only rank 0 performs the write to avoid contention. The data is stored as
+        JSON so that ordering is preserved and values can be reconstructed.
+        """
+
+        if getattr(self, "rank", 0) != 0:
+            return
+
+        if not hasattr(self, "_delay_actuation_queue") or not hasattr(self, "_delay_observation_queue"):
+            return
+
+        def _as_jsonable(value):
+            if torch is not None and isinstance(value, torch.Tensor):
+                value = value.detach().cpu().numpy()
+            if isinstance(value, np.ndarray):
+                return value.tolist()
+            if isinstance(value, (np.floating, np.integer)):
+                return value.item()
+            if isinstance(value, (list, tuple)):
+                return [_as_jsonable(v) for v in value]
+            return value
+
+        def _serialize_queue(queue, key_order):
+            serialized = []
+            for idx, entry in enumerate(queue):
+                serialized_entry = {"order": idx}
+                for key in key_order:
+                    if key in entry:
+                        serialized_entry[key] = _as_jsonable(entry[key])
+                serialized.append(serialized_entry)
+            return serialized
+
+        payload = {
+            "delay_actuation_queue": _serialize_queue(
+                self._delay_actuation_queue, ["actuation", "convection"]
+            ),
+            "delay_observation_queue": _serialize_queue(
+                self._delay_observation_queue, ["observation"]
+            ),
+            "metadata": {
+                "step_count": getattr(self, "step_count", 0),
+                "actuation_queue_length": len(self._delay_actuation_queue),
+                "observation_queue_length": len(self._delay_observation_queue),
+            },
+        }
+
+        save_path = Path("/distribute_save") / "delay_queues.json"
+
+        try:
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            save_path.write_text(json.dumps(payload, indent=2))
+        except Exception:
+            # Persistence is best-effort and should not disrupt shutdown.
+            pass
+
+    def _restore_delay_queues(self) -> None:
+        """Repopulate delay queues from the last persisted state on restart."""
+
+        self._delay_actuation_queue.clear()
+        self._delay_observation_queue.clear()
+        self._delay_restored = False
+
+        load_path = Path("/distribute_save") / "delay_queues.json"
+
+        try:
+            if not load_path.exists():
+                return
+
+            payload = json.loads(load_path.read_text())
+
+            def _enqueue(entries, queue, keys):
+                ordered_entries = sorted(
+                    (entry for entry in entries if isinstance(entry, dict)),
+                    key=lambda entry: entry.get("order", 0),
+                )
+
+                for entry in ordered_entries:
+                    restored = {key: entry[key] for key in keys if key in entry}
+                    queue.append(restored)
+
+            _enqueue(
+                payload.get("delay_actuation_queue", []),
+                self._delay_actuation_queue,
+                ["actuation", "convection"],
+            )
+            _enqueue(
+                payload.get("delay_observation_queue", []),
+                self._delay_observation_queue,
+                ["observation"],
+            )
+
+            self._delay_restored = bool(
+                self._delay_actuation_queue or self._delay_observation_queue
+            )
+        except Exception:
+            self._delay_actuation_queue.clear()
+            self._delay_observation_queue.clear()
+            self._delay_restored = False
             
