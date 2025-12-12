@@ -4,8 +4,8 @@ import libstreams as streams
 import math
 from collections import deque
 
+# Opposition control acts against measured u or v at sensing plane
 class controller(BaseController):
-    """Opposition control: act against measured quantity."""
 
     def __init__(self, env) -> None:
         # state_dim = env.observation_space.shape[0]
@@ -106,8 +106,8 @@ class controller(BaseController):
         self.env.set_observation_window(x_start, x_end, y_loc, y_loc)
         
 
+    # Compute actuator command navigating convective delay
     def compute_action(self, observation):
-        """Compute actuator command with convective delay handling."""
 
         ## Exponential moving average of the observation
         #obs_avg = float(np.mean(observation))

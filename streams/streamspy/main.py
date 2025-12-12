@@ -272,8 +272,8 @@ elif env.config.jet.jet_method_name == "LearningBased":
         
         return best_path
 
+    # Run evaluation episodes (static params) using checkpoint.
     def evaluate(env: StreamsGymEnv, agent, checkpoint: Path) -> None:
-        """Run evaluation episodes using checkpoint."""
         comm = MPI.COMM_WORLD
         rank = comm.rank
 

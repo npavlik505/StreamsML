@@ -16,29 +16,12 @@ if PROJECT_ROOT not in sys.path:
 
 import libstreams as streams # f2py‐wrapped STREAmS library
 
-# ------------------------------------------------------------------
+
 # Transforming STREAmS into a Gym Environment (initialization, restart, step)
-# ------------------------------------------------------------------
+
 # Gym Environment: Initialization
 class StreamsGymEnv(gymnasium.Env):
-    """
-    # Observation: the 1D wall‐shear‐stress array τw(x) (length = config.grid.nx)
-    Observation: 2D span-averaged U velocity from start from x[0, slot_end], y[0, ny]
-    Action:      a single "jet amplitude" scalar ∈ [ -max_amplitude, +max_amplitude ]
 
-    Reward:      Negative squared‐L2 norm of τw(x)  (i.e. agent tries to minimize shear stress)
-                 τw(x) is the 1D wall‐shear‐stress array (length = config.grid.nx)
-    Done:        When `self.step_count >= self.max_episode_steps`.
-
-    General use (see main.py loops):
-        env = StreamsGymEnv(config_path="/input/input.json", max_amplitude=1.0, max_episode_steps=200)
-        obs = env.reset()
-        for _ in range(max_episode_steps):
-            action = env.action_space.sample()
-            obs, reward, done, info = env.step(action)
-            if done:
-                break
-    """
     metadata = {'render.modes': []}
 
     def __init__(self):
@@ -324,41 +307,16 @@ class StreamsGymEnv(gymnasium.Env):
                 dtype=np.float32,
             )
 
-    # MPI helper function
-    def _gather_nonempty(self, arr: np.ndarray) -> np.ndarray:
-        """Gather 1D data from all ranks while skipping empty contributions.
-
-        Parameters
-        ----------
-        arr : np.ndarray
-            Local array which may have zero length on ranks that do not own a
-            portion of the domain for a particular observation.
-
-        Returns
-        -------
-        np.ndarray
-            Concatenated global array containing only the non-empty slices from
-            each MPI rank.
-        """
-
+    # MPI helper function. Gathers 1D data from all ranks while skipping empty contributions.
+    def _gather_nonempty(self, arr: np.ndarray) -> np.ndarray:        
         gathered = self.comm.allgather(np.asarray(arr))
         non_empty = [np.ravel(a) for a in gathered if a.size > 0]
         if non_empty:
             return np.concatenate(non_empty)
         return np.empty(0, dtype=arr.dtype)
 
-    # setup_solver definition: initialized solver on first call, closes solver and reinits on subsequent calls. Used in reset method.
+    # setup_solver definition: initialized solver on first call, closes solver (set restart_mpi=true) and reinits on subsequent calls. Used in reset method.
     def _setup_solver(self, *, restart_mpi: bool = False) -> None:
-        """(Re)initialize the STREAmS solver.
-
-        ``wrap_setup`` and ``wrap_init_solver`` must be called exactly once for a
-        running solver.  When resetting the environment we only finalize the
-        solver via ``wrap_finalize_solver`` while **keeping MPI alive**.  If a
-        full MPI shutdown is required, set ``restart_mpi=True`` to also call
-        ``wrap_finalize`` followed by ``wrap_startmpi`` before reinitializing the
-        solver.
-        """
-        
         if self.rank == 0:
             print('[StreamsEnvironment.py] PYTHON _SETUP_SOLVER METHOD CALLED')
 
@@ -414,11 +372,6 @@ class StreamsGymEnv(gymnasium.Env):
 
     # Gym Environment: Restart
     def reset(self, *, seed=None, options=None):
-        """
-        Re‐initializes the STREAmS solver to a 'cold start' (no previous steps
-        taken), then returns the initial span‑averaged streamwise velocity over
-        the slot as the observation.
-        """
         if self.rank == 0:
             print('[StreamsEnvironment.py] PYTHON RESET() METHOD CALLED')
 
@@ -469,9 +422,9 @@ class StreamsGymEnv(gymnasium.Env):
         #
         # END DEVELOPER SECTION: RETURN YOUR INITIAL OBSERVATION
         #
-
+    
+    # Delay a control signal until it convects from sensors to actuator.
     def delay_action(self, action, observation):
-        """Delay a control signal until it convects from sensors to actuator."""
 
         convection_complete = False
 
@@ -565,12 +518,6 @@ class StreamsGymEnv(gymnasium.Env):
 
     # Gym Environment: Step
     def step(self, action):
-        """
-        Given `action` = np.ndarray of shape (1,), pass it to the JetActuator,
-        advance the solver one time step, recompute tau for the reward, and
-        return (observation, reward, done, info) where the observation is the
-        flattened span‑averaged streamwise velocity over the slot.
-        """
         # apply action (assign the amplitude calculated by RL to amp)
         amp = float(np.asarray(action).reshape(-1)[0])
 
@@ -774,8 +721,8 @@ class StreamsGymEnv(gymnasium.Env):
         y_mesh_dset.write_array(y_mesh)
         z_mesh_dset.write_array(z_mesh)
 
+    # Write solver data for the current step to the HDF5 datasets.
     def log_step_h5(self, jet_amplitude: float) -> None:
-        """Write solver data for the current step to the HDF5 datasets."""
         import utils
         #from . import utils
 
@@ -805,8 +752,8 @@ class StreamsGymEnv(gymnasium.Env):
             self.velocity_dset.write_array(self.config.slice_flowfield_array(streams.wrap_get_w(*self.w_shape)))
             self.flowfield_time_dset.write_array(np.array([self.current_time], dtype=np.float32))
 
+    # Close the HDF5 files opened by initialize_io
     def close_h5_io(self) -> None:
-        """Close the HDF5 files opened by :meth:`initialize_io`."""
         for name in [
             "flowfields",
             "span_averages",
@@ -819,10 +766,8 @@ class StreamsGymEnv(gymnasium.Env):
                 except Exception:
                     pass
 
+    # Cleanly finalize the solver before shutting down.
     def close(self):
-        """
-        Cleanly finalize the solver before shutting down.
-        """
         if self.rank == 0:
             print('[StreamsEnvironment.py] PYTHON CLOSE METHOD CALLED')
         try:
@@ -867,12 +812,9 @@ class StreamsGymEnv(gymnasium.Env):
         except Exception:
             pass
 
+    # Write delayed actuation/observation queues for debugging or restart. Only rank 0 performs the write. The data is stored as
+    # JSON so that ordering is preserved and values can be reconstructed.
     def _persist_delay_queues(self) -> None:
-        """Write delayed actuation/observation queues for debugging or restart.
-
-        Only rank 0 performs the write to avoid contention. The data is stored as
-        JSON so that ordering is preserved and values can be reconstructed.
-        """
 
         if getattr(self, "rank", 0) != 0:
             return
@@ -923,9 +865,8 @@ class StreamsGymEnv(gymnasium.Env):
         except Exception:
             # Persistence is best-effort and should not disrupt shutdown.
             pass
-
+    # Repopulate delay queues from the last persisted state on restart.
     def _restore_delay_queues(self) -> None:
-        """Repopulate delay queues from the last persisted state on restart."""
 
         self._delay_actuation_queue.clear()
         self._delay_observation_queue.clear()

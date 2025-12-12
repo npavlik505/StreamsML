@@ -9,22 +9,8 @@ import matplotlib as mpl
 
 VARIABLE_MAP = {"rho": 0, "u": 1, "v": 2, "w": 3, "E": 4}
 
-
+# Create a contour plot for ``variable`` at ``snapshot.Note: Field to visualise (``rho``, ``u``, ``v``, ``w`` or ``E``).
 def run_snapshot(sa_path: Path, output_dir: Path, variable: str, snapshot: int, domain: tuple[float, float]) -> None:
-    """Create a contour plot for ``variable`` at ``snapshot``.
-
-    Parameters
-    ----------
-    sa_path:
-        Path to ``span_averages.h5`` file.
-    output_dir:
-        Directory where the figure should be written.
-    variable:
-        Field to visualise (``rho``, ``u``, ``v``, ``w`` or ``E``).
-    snapshot:
-        Index of the snapshot to plot.
-    """
-
     variable = variable.strip()
     if variable not in VARIABLE_MAP:
         raise ValueError(
