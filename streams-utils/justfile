@@ -43,6 +43,7 @@ training := "$STREAMS_DIR/streamspy/output/LB_GymData/training.h5"
 checkpoint := "$STREAMS_DIR/streamspy/output/LB_GymData/checkpoints"
 checkpoint_tag := "best"
 
+
 input_dir := "$STREAMS_DIR/streamspy/output/input"
 dist_dir  := "$STREAMS_DIR/streamspy/output/distribute_save"
 
@@ -58,7 +59,7 @@ config:
 
 	apptainer exec ./streams.sif /usr/local/bin/streams-utils \
 		config-generator {{config_output}} {{streams_flow_type}} \
-		--steps 30000 \
+		--steps 160000 \
 		--reynolds-number 250 \
 		--mach-number 2.28 \
 		--x-divisions 600 \
@@ -77,22 +78,26 @@ config:
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
 		--restart-flag 1 \
-		--dtsave-restart 13.0 \
+		--dtsave-restart 33.756 \
 		--fixed-dt .0008439 \
+		--shock-impingement 15.0 \
+		--shock-angle 8.0 \
 		learning-based ddpg \
-		    --slot-start 100 \
-		    --slot-end 149 \
-		    --obs-type v \
+		    --slot-start 200 \
+		    --slot-end 249 \
+		    --obs-type u \
+		    --obs-points "(257,146)(305,76)(297,20)(304,106)(322,42)(268,23)(322,80)(1,20)(287,14)(409,20)(316,18)(305,91)(484,26)(305,31)(379,55)(283,63)(297,46)(344,18)(506,30)(313,68)(433,32)(391,16)(362,56)(460,39)(280,27)(312,84)(333,78)(294,84)(332,53)(303,8)(526,39)(330,20)(321,63)(294,68)(347,71)(253,18)(315,53)(354,100)(368,14)(293,99)(380,19)(578,30)(11,17)(446,36)(325,101)(291,42)(307,58)(547,22)(408,71)(186,16)(473,38)(339,98)(323,12)(283,83)(372,88)(309,96)(298,7)(503,72)(271,46)(302,63)(392,78)(594,28)(423,31)(292,7)" \
 		    --obs-xstart 80 \
 		    --obs-xend 95 \
 		    --obs-ystart 1 \
 		    --obs-yend 25 \
-		    --lag-steps 1000 \
+		    --actuation-interval 100 \
+		    --lag-steps 10000 \
 		    --sensor-actuator-delay \
-		    --train-episodes 4 \
+		    --train-episodes 1 \
 		    --training-output {{training}} \
 		    --eval-episodes 1 \
-		    --eval-max-steps 30000 \
+		    --eval-max-steps 100 \
 		    --eval-output {{eval}} \
 		    --checkpoint-interval 1 \
 		    --checkpoint-dir {{checkpoint}} \
@@ -101,11 +106,9 @@ config:
 		    --learning-rate 0.0003 \
 		    --gamma 0.99 \
 		    --tau 0.005 \
-		    --batch-size 256 \
+		    --batch-size 64 \
 		    --buffer-size 100000 \
 
-
-		
 	cat {{config_output}}
 
 run:
@@ -125,10 +128,9 @@ run:
 
     apptainer exec --nv \
         --bind "{{dist_dir}}:/distribute_save,{{input_dir}}:/input,$STREAMS_DIR/streamspy:/runtimesolver" \
-        "${checkpoint_bind_args[@]}" \
+        $checkpoint_bind_arg \
         $STREAMS_UTILS_DIR/streams.sif \
         /usr/local/bin/streams-utils run-container \
-        --train-only
 
 # ADDITIONAL RUN OPTIONS (LearningBased ONLY)
 # To evaluate existing parameters: Append the --eval-only AND --checkpoint to the end of the run recipe (i.e. under /usr/local/...).
@@ -137,6 +139,8 @@ run:
 #	  --eval-only \
 #	  --train-only \
 #	  --checkpoint "/checkpoints/{{checkpoint_tag}}"
+
+
 
 #analysis:
 #        apptainer exec --nv \

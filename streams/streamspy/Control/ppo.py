@@ -14,8 +14,9 @@ from torch.distributions import Normal
 
 from streamspy.base_LearningBased import BaseAgent
 
-# Combined actor-critic network
+
 class ActorCritic(nn.Module):
+    """Combined actor-critic network."""
 
     def __init__(self, state_dim: int, action_dim: int, hidden_width: int, max_action: float):
         super().__init__()
@@ -53,8 +54,9 @@ class ActorCritic(nn.Module):
         log_prob = dist.log_prob(action)
         return log_prob.sum(1, keepdim=True), value
 
-# PPO agent used for learning-based jet actuation.
+
 class agent(BaseAgent):
+    """PPO agent used for learning-based jet actuation."""
 
     def __init__(self, env):
         params = env.config.jet.jet_params

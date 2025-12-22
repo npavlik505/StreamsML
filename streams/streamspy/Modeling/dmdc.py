@@ -10,12 +10,16 @@ from control import ss
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-
+# ---------------------------------------------------------------------------
 # Data loading and reconstruction helpers
+# ---------------------------------------------------------------------------
+
 def load_h5_data(span_avg_file: Path, traj_file: Path, output_dir: Path, velocity_components: list[int] | tuple[int, ...] = (1, 2, 3)):
-    #Load span averaged snapshots and actuation history. The function also stores the initial snapshot, subsampled control input and
-    #time step in ``output_dir`` for later use.
+    """Load span averaged snapshots and actuation history.
     
+    The function also stores the initial snapshot, subsampled control input and
+    time step in ``output_dir`` for later use.
+    """
     with h5py.File(span_avg_file, "r") as f:
         data = f["span_average"][:]  # (m, comps, nx, ny)
     with h5py.File(traj_file, "r") as f:
@@ -77,8 +81,10 @@ def dmdc_sim(A: np.ndarray, B: np.ndarray, U: np.ndarray, dt: float, x0: np.ndar
     return output_h5
 
 
-
+# ---------------------------------------------------------------------------
 # Error metrics
+# ---------------------------------------------------------------------------
+
 def Erms(snapshots_flat_FOM: np.ndarray, snapshots_flat_ROM: np.ndarray) -> float:
     diff = snapshots_flat_ROM - snapshots_flat_FOM
     mse = np.mean(diff ** 2)
@@ -124,7 +130,10 @@ def animate_error(err: np.ndarray, comp: int = 0, interval: int = 100, cmap: str
     return ani
 
 
+# ---------------------------------------------------------------------------
 # H2 and Hinf norms
+# ---------------------------------------------------------------------------
+
 def load_rom_ss(rom_dir: Path, label: str):
     A = np.load(rom_dir / f"A_red_matrix_{label}.npy")
     B = np.load(rom_dir / f"B_red_matrix_{label}.npy")
@@ -165,7 +174,10 @@ def H2_Hinf_Analysis(rom_dir: Path):
         print(f"[{label}]  ‖G‖₂ ≈ {h2_val:.3e}  ;  ‖G‖∞ ≈ {hinf_val:.3e}  @ ω={w_peak:.2f} rad/s")
 
 
+# ---------------------------------------------------------------------------
 # High-level routine
+# ---------------------------------------------------------------------------
+
 def _energy_rank(X: np.ndarray, energy_pct: float) -> int:
     """Return the reduced order based on requested energy percentage."""
     if not (0 < energy_pct <= 100.0):

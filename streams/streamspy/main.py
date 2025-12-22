@@ -3,6 +3,7 @@
 
 import json # collects values from input.json fields, converts them to a nested Python dictionary, which is then converted into a Config object (e.g. config.temporal.num_iter)
 import h5py
+import math
 import os
 import runpy
 from pathlib import Path
@@ -177,6 +178,10 @@ elif env.config.jet.jet_method_name == "LearningBased":
         rank = comm.rank
         if rank == 0:
             print(f'TRAINING')
+
+        actuation_interval = max(
+            1, int(env.config.jet.jet_params.get("actuation_interval", 1))
+        )
         
         # print("[rl_control.py] Define reward objects")
         best_reward = -float("inf")
@@ -195,7 +200,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 # h5train = io_utils.IoFile(str(training_output_path))
                 h5train = io_utils.IoFile(str(training_output_path), comm=None)
                 training_episodes = env.config.jet.jet_params["train_episodes"]
-                training_steps = env.max_episode_steps
+                training_steps = math.ceil(env.max_episode_steps / actuation_interval)
                 observation_dim = env.observation_space.shape[0]
                 # Create datasets within the h5 file
                 time_dset = h5train.file.create_dataset("time", shape=(training_episodes, training_steps), dtype="f4")
@@ -220,7 +225,9 @@ elif env.config.jet.jet_method_name == "LearningBased":
             done = False
             ep_reward = 0.0
             step = 0
+            reward_step = 0
             sa_queue = deque()
+            last_action_t = None
             def _to_numpy_copy(array_like):
                 if isinstance(array_like, torch.Tensor):
                     return array_like.detach().cpu().numpy().copy()
@@ -230,30 +237,43 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 if rank == 0:
                     obs_array = _to_numpy_copy(obs)
                     obs_tensor = torch.tensor(obs_array, dtype=torch.float32)
-                    action_t = agent.choose_action(obs_tensor, step)
-                    action_t, obs_t, obs_t_next, convection_complete = env.delay_action(action_t, obs_tensor) # Delay action if desired
+                    if step % actuation_interval == 0:
+                        action_t = agent.choose_action(obs_tensor, step)
+                        action_t, obs_t, obs_t_next, convection_complete = env.delay_action(action_t, obs_tensor) # Delay action if desired
+                        last_action_t = action_t
+                        action_update = True
+                    else:
+                        action_t = last_action_t
+                        obs_t = None
+                        obs_t_next = None
+                        convection_complete = False
+                        action_update = False
                 else:
                     action_t = None
+                    action_update = None
                 action_t = comm.bcast(action_t, root=0)
+                action_update = comm.bcast(action_update, root=0)
                 next_obs, reward, done, info = env.step(action_t)
                 done = comm.bcast(done, root=0)
-                if rank == 0:
+                if rank == 0 and action_update:
                     next_obs_array = _to_numpy_copy(next_obs)
                     if convection_complete:
                         sa_queue.append((_to_numpy_copy(obs_t), action_t, info["time"]))
                     else:
                         sa_queue.append((obs_array, action_t, info["time"]))
-                if len(sa_queue) > env.lag_steps:
+                if rank == 0 and (reward != 0.0 or info.get("reward_ready")) and sa_queue:
+                    next_obs_array = _to_numpy_copy(next_obs)
                     old_obs, old_action, old_time = sa_queue.popleft()
                     old_obs_np = _to_numpy_copy(old_obs)
                     ep_reward += reward
                     agent.learn(old_obs_np, old_action, reward, next_obs_array)
                     if write_training:
-                        idx = step - env.lag_steps
+                        idx = reward_step
                         time_dset[ep, idx] = old_time
                         amp_dset[ep, idx] = old_action
                         reward_dset[ep, idx] = reward
                         obs_dset[ep, idx, :] = old_obs_np
+                    reward_step += 1
                 step += 1
                 obs = next_obs
             if rank == 0:
@@ -272,10 +292,13 @@ elif env.config.jet.jet_method_name == "LearningBased":
         
         return best_path
 
-    # Run evaluation episodes (static params) using checkpoint.
     def evaluate(env: StreamsGymEnv, agent, checkpoint: Path) -> None:
+        """Run evaluation episodes using checkpoint."""
         comm = MPI.COMM_WORLD
         rank = comm.rank
+        actuation_interval = max(
+            1, int(env.config.jet.jet_params.get("actuation_interval", 1))
+        )
 
         if rank == 0:
             print(f'EVALUATION')
@@ -290,7 +313,7 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 eval_output_path.parent.mkdir(parents=True, exist_ok=True)
                 h5eval = io_utils.IoFile(str(eval_output_path))
                 eval_episodes = env.config.jet.jet_params["eval_episodes"]
-                eval_steps = env.config.jet.jet_params["eval_max_steps"]
+                eval_steps = math.ceil(env.config.jet.jet_params["eval_max_steps"] / actuation_interval)
                 observation_dim = env.observation_space.shape[0]
 
                 time_dset = h5eval.file.create_dataset("time", shape=(eval_episodes, eval_steps), dtype="f4")
@@ -330,8 +353,10 @@ elif env.config.jet.jet_method_name == "LearningBased":
             obs = env.reset()
             done = False
             step = 0
+            reward_step = 0
             ep_reward = 0.0
             sa_queue = deque()
+            last_actuation = None
             def _to_numpy_copy(array_like):
                 if isinstance(array_like, torch.Tensor):
                     return array_like.detach().cpu().numpy().copy()
@@ -341,16 +366,27 @@ elif env.config.jet.jet_method_name == "LearningBased":
                 if rank == 0:
                     obs_array = _to_numpy_copy(obs)
                     obs_tensor = torch.tensor(obs_array, dtype=torch.float32)
-                    raw_action = agent.choose_action(obs_tensor, step)
-                    actuation, obs_t, obs_t_next, convection_complete = env.delay_action(raw_action, obs_tensor)
+                    if step % actuation_interval == 0:
+                        raw_action = agent.choose_action(obs_tensor, step)
+                        actuation, obs_t, obs_t_next, convection_complete = env.delay_action(raw_action, obs_tensor)
+                        last_actuation = actuation
+                        action_update = True
+                    else:
+                        actuation = last_actuation
+                        obs_t = None
+                        obs_t_next = None
+                        convection_complete = False
+                        action_update = False
                 else:
                     actuation = None
+                    action_update = None
                 actuation = comm.bcast(actuation, root=0)
+                action_update = comm.bcast(action_update, root=0)
                 obs, reward, done, info = env.step(actuation)
                 done = comm.bcast(done, root=0)
                 if write_eval:
                     env.log_step_h5(actuation)
-                if rank == 0:
+                if rank == 0 and action_update:
                     next_obs_array = _to_numpy_copy(obs)
                     if convection_complete:
                         delayed_obs = _to_numpy_copy(obs_t)
@@ -358,16 +394,17 @@ elif env.config.jet.jet_method_name == "LearningBased":
                         sa_queue.append((delayed_obs, actuation, delayed_next_obs, info["time"]))
                     else:
                         sa_queue.append((obs_array, actuation, next_obs_array, info["time"]))
-                    if len(sa_queue) > env.lag_steps:
-                        old_obs, old_action, _, old_time = sa_queue.popleft()
-                        old_obs_np = _to_numpy_copy(old_obs)
-                        ep_reward += reward
-                        idx = step - env.lag_steps
-                        if write_eval:
-                            time_dset[ep, idx] = old_time
-                            amp_dset[ep, idx] = old_action
-                            reward_dset[ep, idx] = reward
-                            obs_dset[ep, idx, :] = old_obs_np
+                if rank == 0 and (reward != 0.0 or info.get("reward_ready")) and sa_queue:
+                    old_obs, old_action, _, old_time = sa_queue.popleft()
+                    old_obs_np = _to_numpy_copy(old_obs)
+                    ep_reward += reward
+                    idx = reward_step
+                    if write_eval:
+                        time_dset[ep, idx] = old_time
+                        amp_dset[ep, idx] = old_action
+                        reward_dset[ep, idx] = reward
+                        obs_dset[ep, idx, :] = old_obs_np
+                    reward_step += 1
                 step += 1
             if write_eval:
                 comm.Barrier()

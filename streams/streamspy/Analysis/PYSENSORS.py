@@ -113,12 +113,12 @@ def run_pysensors(sa_path: Path, output_dir: Path, num_sensors: int = 10) -> Pat
     plt.close(fig)
     print(f"Sensor overlay saved to {fig_path}")
 
-    # Terminal table output
+    # --- Console table ------------------------------------------------------
     print(" index  var  ix  iy      x_phys         y_phys")
     for i, ch, ix, iy, x, y in records:
         print(f"{i:6d}  {ch.decode():>1s}  {ix:3d} {iy:3d}  {x:12.6g}  {y:12.6g}")
 
-    # Write sensors.h5 (raw + compound table + metadata)
+    # --- Write sensors.h5 (raw + compound table + metadata) -----------------
     out_file = output_dir / "sensors.h5"
     table_dt = np.dtype([
         ("index", "<i4"),

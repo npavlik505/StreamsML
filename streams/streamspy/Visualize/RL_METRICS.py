@@ -6,8 +6,16 @@ import h5py
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Create a plot for Obs Mag, Actuation, and Reward for RL Training and Eval
 def run_rlmetrics(rl_metrics_path: Path, output_dir: Path) -> None:
+    """Create a plot for Obs Mag, Actuation, and Reward for RL Training and Eval
+
+    Parameters
+    ----------
+    rl_metrics_path:
+        Path to ``LB_GymData`` file.
+    output_dir:
+        Directory where the figure should be written.
+    """
 
     rl_training_metrics = rl_metrics_path / 'training.h5'
     rl_eval_metrics = rl_metrics_path / 'evaluation.h5'

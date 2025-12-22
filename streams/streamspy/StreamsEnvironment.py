@@ -16,12 +16,29 @@ if PROJECT_ROOT not in sys.path:
 
 import libstreams as streams # f2py‐wrapped STREAmS library
 
-
+# ------------------------------------------------------------------
 # Transforming STREAmS into a Gym Environment (initialization, restart, step)
-
+# ------------------------------------------------------------------
 # Gym Environment: Initialization
 class StreamsGymEnv(gymnasium.Env):
+    """
+    # Observation: the 1D wall‐shear‐stress array τw(x) (length = config.grid.nx)
+    Observation: 2D span-averaged U velocity from start from x[0, slot_end], y[0, ny]
+    Action:      a single "jet amplitude" scalar ∈ [ -max_amplitude, +max_amplitude ]
 
+    Reward:      Negative squared‐L2 norm of τw(x)  (i.e. agent tries to minimize shear stress)
+                 τw(x) is the 1D wall‐shear‐stress array (length = config.grid.nx)
+    Done:        When `self.step_count >= self.max_episode_steps`.
+
+    General use (see main.py loops):
+        env = StreamsGymEnv(config_path="/input/input.json", max_amplitude=1.0, max_episode_steps=200)
+        obs = env.reset()
+        for _ in range(max_episode_steps):
+            action = env.action_space.sample()
+            obs, reward, done, info = env.step(action)
+            if done:
+                break
+    """
     metadata = {'render.modes': []}
 
     def __init__(self):
@@ -73,7 +90,14 @@ class StreamsGymEnv(gymnasium.Env):
         self._has_values = False
         
         jet_params = self.config.jet.jet_params
+        self.actuation_interval = max(
+            1, int(jet_params.get("actuation_interval", 1))
+        )
+        self._last_applied_amp = 0.0
         self.obs_defined = jet_params.get("obs_type")
+        self._obs_points = []
+        self._local_obs_points = []
+        self._use_obs_points = False
         if self.obs_defined is not None:
             print("obs_type is TRUE")
             # Note the index (first column) is used for Fortran and is therefore 1-based not 0-based
@@ -115,43 +139,70 @@ class StreamsGymEnv(gymnasium.Env):
             if self.rank == 0:
                 print(f"Obs consists of {obs_key} data -> index {self._obs_index}, range [{min_val}, {max_val}]")
 
-            self._obs_xstart = int(jet_params["obs_xstart"])
-            self._obs_xend = int(jet_params["obs_xend"])
-            self._obs_ystart = int(jet_params["obs_ystart"])
-            self._obs_yend = int(jet_params["obs_yend"])
-            if self.rank == 0:
-                print(f"Obs space,  X: {self._obs_xstart} to {self._obs_xend} | Y: {self._obs_ystart} to {self._obs_yend}")
-                
-            # Determine the portion of the observation window owned by this MPI
-            # rank.  Ranks whose local domain does not intersect the requested
-            # region return an empty slice.
-            nx_local = self.config.nx_mpi()
-            global_x_start = self.rank * nx_local + 1
-            global_x_end = global_x_start + nx_local - 1
-            self._local_xstart = max(self._obs_xstart, global_x_start)
-            self._local_xend = min(self._obs_xend, global_x_end)
-            self._local_ystart = max(self._obs_ystart, 1)
-            self._local_yend = min(self._obs_yend, self.config.grid.ny)
-            self._has_values = (
-                self._local_xstart <= self._local_xend
-                and self._local_ystart <= self._local_yend
-            )        
-            
-            if self._has_values:
-                sample_slice = streams.wrap_get_w_avzg_slice(
-                    self._local_xstart,
-                    self._local_xend,
-                    self._local_ystart,
-                    self._local_yend,
-                    self._obs_index,
-                )
-                d1size, d2size = sample_slice.shape[1:3]
+            self._obs_points = self._load_obs_points(jet_params)
+            self._use_obs_points = len(self._obs_points) > 0
+
+            if self._use_obs_points:
+                xs, ys = zip(*self._obs_points)
+                self._obs_xstart = int(min(xs))
+                self._obs_xend = int(max(xs))
+                self._obs_ystart = int(min(ys))
+                self._obs_yend = int(max(ys))
+                if self.rank == 0:
+                    print(
+                        f"Obs points: {len(self._obs_points)} total | "
+                        f"X: {self._obs_xstart} to {self._obs_xend} | "
+                        f"Y: {self._obs_ystart} to {self._obs_yend}"
+                    )
+
+                nx_local = self.config.nx_mpi()
+                global_x_start = self.rank * nx_local + 1
+                global_x_end = global_x_start + nx_local - 1
+                self._local_obs_points = [
+                    (idx, x, y)
+                    for idx, (x, y) in enumerate(self._obs_points)
+                    if global_x_start <= x <= global_x_end
+                ]
+                self._has_values = len(self._local_obs_points) > 0
+                self._global_obs_size = len(self._obs_points)
             else:
-                d1size = d2size = 0
-            
-            local_obs_size = d1size * d2size
-            global_obs_size = self.comm.allreduce(local_obs_size)
-            self._global_obs_size = global_obs_size
+                self._obs_xstart = int(jet_params["obs_xstart"])
+                self._obs_xend = int(jet_params["obs_xend"])
+                self._obs_ystart = int(jet_params["obs_ystart"])
+                self._obs_yend = int(jet_params["obs_yend"])
+                if self.rank == 0:
+                    print(f"Obs space,  X: {self._obs_xstart} to {self._obs_xend} | Y: {self._obs_ystart} to {self._obs_yend}")
+                    
+                # Determine the portion of the observation window owned by this MPI
+                # rank.  Ranks whose local domain does not intersect the requested
+                # region return an empty slice.
+                nx_local = self.config.nx_mpi()
+                global_x_start = self.rank * nx_local + 1
+                global_x_end = global_x_start + nx_local - 1
+                self._local_xstart = max(self._obs_xstart, global_x_start)
+                self._local_xend = min(self._obs_xend, global_x_end)
+                self._local_ystart = max(self._obs_ystart, 1)
+                self._local_yend = min(self._obs_yend, self.config.grid.ny)
+                self._has_values = (
+                    self._local_xstart <= self._local_xend
+                    and self._local_ystart <= self._local_yend
+                )        
+                
+                if self._has_values:
+                    sample_slice = streams.wrap_get_w_avzg_slice(
+                        self._local_xstart,
+                        self._local_xend,
+                        self._local_ystart,
+                        self._local_yend,
+                        self._obs_index,
+                    )
+                    d1size, d2size = sample_slice.shape[1:3]
+                else:
+                    d1size = d2size = 0
+                
+                local_obs_size = d1size * d2size
+                global_obs_size = self.comm.allreduce(local_obs_size)
+                self._global_obs_size = global_obs_size
             
         w1, w2, w3, w4  = streams.wrap_get_w_shape() # conservative vector (x, y, z, (rho, rho-u, rho-v, rho-w, E))
         self.w_shape   = (w1, w2, w3, w4)
@@ -232,14 +283,11 @@ class StreamsGymEnv(gymnasium.Env):
 
                 # Parameters for delayed reward via eligibility traces
                 # "lag_steps" controls how many steps elapse before credit is assigned to an action.
-                # "lambda_trace" controls exponential decay of eligibility for accumulating rewards.
-                # TODO: Calculate lag_steps based on convection jet and let user specify their own lag_steps to overwrite calculation if specified
+                # "lambda_trace" controls exponential decay of eligibility for shear stress credit via reward.
                 self.action_queue = deque()
                 self.lag_steps = jet_params["lag_steps"]
-                # Exponential decay so the fluid directly under the jet is weighted
-                # higher than previously traversed segments when accumulating shear
-                # rewards.
                 self.lambda_decay = float(jet_params.get("lambda_decay", 1.0))
+                self.lambda_decay = .01
                 self.lambda_trace = np.exp(-self.lambda_decay* np.arange(self.config.grid.nx - self.slot_end, dtype=np.float64))
                 # State for convection-delayed actuation
                 self._delay_actuation_queue = deque()
@@ -260,6 +308,11 @@ class StreamsGymEnv(gymnasium.Env):
     def set_observation_window(self, xstart: int, xend: int, ystart: int, yend: int) -> None:
         """Override the observation bounds and recompute derived fields."""
         
+        if self._use_obs_points:
+            if self.rank == 0:
+                print("Ignoring set_observation_window: obs_points are configured.")
+            return
+
         self._obs_xstart = int(xstart)
         self._obs_xend = int(xend)
         self._obs_ystart = int(ystart)
@@ -307,16 +360,114 @@ class StreamsGymEnv(gymnasium.Env):
                 dtype=np.float32,
             )
 
-    # MPI helper function. Gathers 1D data from all ranks while skipping empty contributions.
-    def _gather_nonempty(self, arr: np.ndarray) -> np.ndarray:        
+    # MPI helper function
+    def _gather_nonempty(self, arr: np.ndarray) -> np.ndarray:
+        """Gather 1D data from all ranks while skipping empty contributions.
+
+        Parameters
+        ----------
+        arr : np.ndarray
+            Local array which may have zero length on ranks that do not own a
+            portion of the domain for a particular observation.
+
+        Returns
+        -------
+        np.ndarray
+            Concatenated global array containing only the non-empty slices from
+            each MPI rank.
+        """
+
         gathered = self.comm.allgather(np.asarray(arr))
         non_empty = [np.ravel(a) for a in gathered if a.size > 0]
         if non_empty:
             return np.concatenate(non_empty)
         return np.empty(0, dtype=arr.dtype)
 
-    # setup_solver definition: initialized solver on first call, closes solver (set restart_mpi=true) and reinits on subsequent calls. Used in reset method.
+    def _gather_point_values(self, local_pairs, total_points: int) -> np.ndarray:
+        """Gather (index, value) point observations from all ranks."""
+        gathered = self.comm.allgather(local_pairs)
+        obs = np.full((total_points,), np.nan, dtype=np.float32)
+        for entries in gathered:
+            for idx, value in entries:
+                obs[idx] = value
+        return obs
+
+    def _collect_point_observation(self) -> np.ndarray:
+        if not self._use_obs_points:
+            return np.empty((0,), dtype=np.float32)
+        local_pairs = []
+        if self._local_obs_points:
+            xs = np.array([x for _, x, _ in self._local_obs_points], dtype=np.int32)
+            ys = np.array([y for _, _, y in self._local_obs_points], dtype=np.int32)
+            values = streams.wrap_get_w_avzg_points(
+                xs=xs,
+                ys=ys,
+                n_points=xs.size,
+                obs_type=self._obs_index,
+            )
+            for (idx, _, _), value in zip(self._local_obs_points, values):
+                local_pairs.append((idx, float(value)))
+        return self._gather_point_values(local_pairs, self._global_obs_size)
+
+    @staticmethod
+    def _parse_obs_points(raw_points):
+        if not raw_points:
+            return []
+        parsed = []
+        for idx, point in enumerate(raw_points):
+            if isinstance(point, dict):
+                if "x" not in point or "y" not in point:
+                    raise ValueError(f"obs_points[{idx}] must include x and y keys")
+                x = point["x"]
+                y = point["y"]
+            elif isinstance(point, (list, tuple)) and len(point) == 2:
+                x, y = point
+            else:
+                raise ValueError(
+                    f"obs_points[{idx}] must be a dict with x/y or a 2-item list"
+                )
+            parsed.append((int(x), int(y)))
+        return parsed
+
+    def _load_obs_points(self, jet_params):
+        obs_points = self._parse_obs_points(jet_params.get("obs_points"))
+        obs_points_file = jet_params.get("obs_points_file")
+        if obs_points or not obs_points_file:
+            return obs_points
+
+        points_path = Path(str(obs_points_file)).expanduser()
+        if not points_path.is_file():
+            raise FileNotFoundError(
+                f"obs_points_file '{obs_points_file}' does not exist"
+            )
+
+        with open(points_path, "r") as handle:
+            try:
+                file_points = json.load(handle)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"obs_points_file '{obs_points_file}' must contain JSON observation points"
+                ) from exc
+
+        obs_points = self._parse_obs_points(file_points)
+        if self.rank == 0:
+            print(
+                f"Loaded {len(obs_points)} observation points from {points_path}"
+            )
+        return obs_points
+
+    # setup_solver definition: initialized solver on first call, closes solver and reinits on subsequent calls. Used in reset method.
     def _setup_solver(self, *, restart_mpi: bool = False) -> None:
+        """(Re)initialize the STREAmS solver.
+
+        ``wrap_setup`` and ``wrap_init_solver`` must be called exactly once for a
+        running solver.  When resetting the environment we only finalize the
+        solver via ``wrap_finalize_solver`` while **keeping MPI alive**.  If a
+        full MPI shutdown is required, set ``restart_mpi=True`` to also call
+        ``wrap_finalize`` followed by ``wrap_startmpi`` before reinitializing the
+        solver.
+        """
+        
         if self.rank == 0:
             print('[StreamsEnvironment.py] PYTHON _SETUP_SOLVER METHOD CALLED')
 
@@ -372,6 +523,11 @@ class StreamsGymEnv(gymnasium.Env):
 
     # Gym Environment: Restart
     def reset(self, *, seed=None, options=None):
+        """
+        Re‐initializes the STREAmS solver to a 'cold start' (no previous steps
+        taken), then returns the initial span‑averaged streamwise velocity over
+        the slot as the observation.
+        """
         if self.rank == 0:
             print('[StreamsEnvironment.py] PYTHON RESET() METHOD CALLED')
 
@@ -379,6 +535,7 @@ class StreamsGymEnv(gymnasium.Env):
         
         self._setup_solver() # End previous solver and rebuild it
         self.actuator = self.jet_actuator.init_actuator(self.rank, self.config) # Re‐build actuator
+        self._last_applied_amp = 0.0
 
 
         #
@@ -387,21 +544,24 @@ class StreamsGymEnv(gymnasium.Env):
         # Immediately compute the span‑averaged conservative variables on the new solver (no time steps taken yet).
         streams.wrap_copy_gpu_to_cpu()  # bring everything from GPU to CPU
         streams.wrap_compute_av() # update the w_avzg
-        if self._has_values:
-            local_slice = streams.wrap_get_w_avzg_slice(
-                self._local_xstart,
-                self._local_xend,
-                self._local_ystart,
-                self._local_yend,                
-                self._obs_index,
-            )
-            local_slice = np.ravel(local_slice)
+        if self._use_obs_points:
+            u_global = self._collect_point_observation()
         else:
-            local_slice = np.empty((0,), dtype=np.float32)
+            if self._has_values:
+                local_slice = streams.wrap_get_w_avzg_slice(
+                    self._local_xstart,
+                    self._local_xend,
+                    self._local_ystart,
+                    self._local_yend,                
+                    self._obs_index,
+                )
+                local_slice = np.ravel(local_slice)
+            else:
+                local_slice = np.empty((0,), dtype=np.float32)
 
-        # Gather observation values from all MPI ranks and flatten, ignoring
-        # empty slices
-        u_global = self._gather_nonempty(local_slice)
+            # Gather observation values from all MPI ranks and flatten, ignoring
+            # empty slices
+            u_global = self._gather_nonempty(local_slice)
 
         # Reset counters
         self.step_count = 0
@@ -422,9 +582,9 @@ class StreamsGymEnv(gymnasium.Env):
         #
         # END DEVELOPER SECTION: RETURN YOUR INITIAL OBSERVATION
         #
-    
-    # Delay a control signal until it convects from sensors to actuator.
+
     def delay_action(self, action, observation):
+        """Delay a control signal until it convects from sensors to actuator."""
 
         convection_complete = False
 
@@ -452,18 +612,21 @@ class StreamsGymEnv(gymnasium.Env):
         default_prev_obs = _zero_like(observation)
         default_next_obs = _zero_like(observation)
 
+        if self._use_obs_points:
+            if self.rank == 0 and self.step_count == 0:
+                print("obs_points configured; skipping sensor_actuator_delay")
+            return _as_float(action), default_prev_obs, default_next_obs, False
+
         if self.step_count == 0:
-            # self._delay_actuation_queue.clear()
-            # self._delay_observation_queue.clear()
             self._delay_skip = False
             contiguous = self._obs_xend == self.slot_start
             overlaps = self._obs_xend > self.slot_start
             self._delay_skip = contiguous or overlaps
-            
+
             if self._delay_skip or not getattr(self, "_delay_restored", False):
                 self._delay_actuation_queue.clear()
                 self._delay_observation_queue.clear()
-            
+
             if self._delay_skip and self.rank == 0:
                 print(
                     f"observation window x: {self._obs_xstart}-{self._obs_xend} must be upstream from actuator x: {self.slot_start}-{self.slot_end}"
@@ -518,14 +681,26 @@ class StreamsGymEnv(gymnasium.Env):
 
     # Gym Environment: Step
     def step(self, action):
+        """
+        Given `action` = np.ndarray of shape (1,), pass it to the JetActuator,
+        advance the solver one time step, recompute tau for the reward, and
+        return (observation, reward, done, info) where the observation is the
+        flattened span‑averaged streamwise velocity over the slot.
+        """
         # apply action (assign the amplitude calculated by RL to amp)
         amp = float(np.asarray(action).reshape(-1)[0])
 
-        # step actuator
-        used_amp = self.actuator.step_actuator(self.current_time, self.step_count, amp)
+        update_actuation = (
+            self.step_count == 0
+            or self.step_count % self.actuation_interval == 0
+        )
 
-        # redefine amp for later storage
-        amp = float(used_amp)
+        if update_actuation:
+            used_amp = self.actuator.step_actuator(
+                self.current_time, self.step_count, amp
+            )
+            self._last_applied_amp = float(used_amp)
+        amp = float(self._last_applied_amp)
 
         # step solver
         streams.wrap_step_solver()
@@ -540,6 +715,12 @@ class StreamsGymEnv(gymnasium.Env):
         streams.wrap_copy_gpu_to_cpu()
         streams.wrap_compute_av()
         streams.wrap_tauw_calculate()
+
+        cf_instant = 0.0
+        tau_avg = 0.0
+        convection = 0
+        lambda_weight = 0.0
+        reward_ready = False
 
         if self.config.jet.jet_method_name == "LearningBased":
             # Immediate reward based on wall shear stress
@@ -562,8 +743,6 @@ class StreamsGymEnv(gymnasium.Env):
             dt = float(streams.wrap_get_dtglobal())
             dx = self.config.length.lx / self.config.grid.nx
             dy = self.config.length.ly / self.config.grid.ny
-            r_t = -self.tau_weight * (tau_post_jet / max(self.Cf_den, 1e-30))
-
             if self.obs_defined is not None:
                 convection_profile = np.zeros(tau_post_jet.size, dtype=np.float64)
                 if tau_post_jet.size > 0:
@@ -599,7 +778,13 @@ class StreamsGymEnv(gymnasium.Env):
                         convection_profile = np.mean(convection_slice, axis=1)
             
                 # Track actions to appropriately calculate and delay rewards
-                self.action_queue.append({"post_actuation_steps": 0.0, "accum_reward": 0.0, "x_index": 0.0})
+                if update_actuation:
+                    self.action_queue.append(
+                        {
+                            "post_actuation_steps": 0.0,
+                            "x_index": 0.0,
+                        }
+                    )
 
                 for entry in self.action_queue:
                     entry["post_actuation_steps"] += 1.0
@@ -607,24 +792,28 @@ class StreamsGymEnv(gymnasium.Env):
                         convection_index = min(int(entry["x_index"]), tau_post_jet.size - 1)
                         Uc_local = convection_profile[convection_index]
                         entry["x_index"] += (Uc_local * dt) / dx
-                    convection = int(min(np.ceil(entry["x_index"]), len(r_t)))
-                    step_reward = 0.0
-                    if convection:
-                        r_slice = r_t[:convection][::-1]
-                        weight_slice = self.lambda_trace[:convection]
-                        step_reward += float(np.dot(weight_slice, r_slice))
-                    entry["accum_reward"] += step_reward
 
-                if (self.action_queue and self.action_queue[0]["post_actuation_steps"] >= self.lag_steps):
-                    
-                    ## DEBUG SESSION (BEGIN)
-                    #finished_entry = self.action_queue.popleft()
-                    #x_convected = finished_entry["x_index"]  # in grid points
-                    #print(f"estimated convection is ≈ {x_convected:.2f} grid points")
-                    #reward = finished_entry["accum_reward"]
-                    ## DEBUG SESSION (END)   
+                convection_done = False
+                if self.action_queue and tau_post_jet.size > 0:
+                    convection_done = self.action_queue[0]["x_index"] >= len(tau_post_jet)
 
-                    reward = self.action_queue.popleft()["accum_reward"]
+                if (
+                    self.action_queue
+                    and (
+                        self.action_queue[0]["post_actuation_steps"] >= self.lag_steps
+                        or convection_done
+                    )
+                ):
+                    finished_entry = self.action_queue.popleft()
+                    convection = int(min(np.ceil(finished_entry["x_index"]), len(tau_post_jet)))
+                    if convection > 0:
+                        tau_avg = float(np.mean(tau_post_jet[:convection]))
+                    cf_instant = tau_avg / self.Cf_den
+                    weight_slice = self.lambda_trace[:convection]
+                    # Use the mean lambda weight across the convected segment.
+                    lambda_weight = float(np.mean(weight_slice)) if convection > 0 else 0.0
+                    reward = -lambda_weight * cf_instant
+                    reward_ready = True
                 else:
                     reward = 0.0
             else:
@@ -634,18 +823,21 @@ class StreamsGymEnv(gymnasium.Env):
 
         # Observation: span‑averaged conservative variables over the user
         # specified window
-        if self._has_values:
-            local_slice = streams.wrap_get_w_avzg_slice(
-                self._local_xstart,
-                self._local_xend,
-                self._local_ystart,
-                self._local_yend,
-                self._obs_index,
-            )
-            local_slice = np.ravel(local_slice)
+        if self._use_obs_points:
+            u_global = self._collect_point_observation()
         else:
-            local_slice = np.empty((0,), dtype=np.float32)
-        u_global = self._gather_nonempty(local_slice)
+            if self._has_values:
+                local_slice = streams.wrap_get_w_avzg_slice(
+                    self._local_xstart,
+                    self._local_xend,
+                    self._local_ystart,
+                    self._local_yend,
+                    self._obs_index,
+                )
+                local_slice = np.ravel(local_slice)
+            else:
+                local_slice = np.empty((0,), dtype=np.float32)
+            u_global = self._gather_nonempty(local_slice)
 
         # Termination: After `max_episode_steps` steps, done=True
         self.step_count += 1
@@ -662,7 +854,13 @@ class StreamsGymEnv(gymnasium.Env):
             "time": self.current_time,
             "step": self.step_count,
             "jet_amplitude": amp,
-            "instant_reward": r_t,
+            "instant_reward": {
+                "cf": cf_instant,
+                "tau_avg": tau_avg,
+                "convection": convection,
+                "lambda_weight": lambda_weight,
+            },
+            "reward_ready": reward_ready,
         }
         return obs, reward, done, info
 
@@ -721,8 +919,8 @@ class StreamsGymEnv(gymnasium.Env):
         y_mesh_dset.write_array(y_mesh)
         z_mesh_dset.write_array(z_mesh)
 
-    # Write solver data for the current step to the HDF5 datasets.
     def log_step_h5(self, jet_amplitude: float) -> None:
+        """Write solver data for the current step to the HDF5 datasets."""
         import utils
         #from . import utils
 
@@ -752,8 +950,8 @@ class StreamsGymEnv(gymnasium.Env):
             self.velocity_dset.write_array(self.config.slice_flowfield_array(streams.wrap_get_w(*self.w_shape)))
             self.flowfield_time_dset.write_array(np.array([self.current_time], dtype=np.float32))
 
-    # Close the HDF5 files opened by initialize_io
     def close_h5_io(self) -> None:
+        """Close the HDF5 files opened by :meth:`initialize_io`."""
         for name in [
             "flowfields",
             "span_averages",
@@ -766,8 +964,10 @@ class StreamsGymEnv(gymnasium.Env):
                 except Exception:
                     pass
 
-    # Cleanly finalize the solver before shutting down.
     def close(self):
+        """
+        Cleanly finalize the solver before shutting down.
+        """
         if self.rank == 0:
             print('[StreamsEnvironment.py] PYTHON CLOSE METHOD CALLED')
         try:
@@ -812,9 +1012,12 @@ class StreamsGymEnv(gymnasium.Env):
         except Exception:
             pass
 
-    # Write delayed actuation/observation queues for debugging or restart. Only rank 0 performs the write. The data is stored as
-    # JSON so that ordering is preserved and values can be reconstructed.
     def _persist_delay_queues(self) -> None:
+        """Write delayed actuation/observation queues for debugging or restart.
+
+        Only rank 0 performs the write to avoid contention. The data is stored as
+        JSON so that ordering is preserved and values can be reconstructed.
+        """
 
         if getattr(self, "rank", 0) != 0:
             return
@@ -865,8 +1068,9 @@ class StreamsGymEnv(gymnasium.Env):
         except Exception:
             # Persistence is best-effort and should not disrupt shutdown.
             pass
-    # Repopulate delay queues from the last persisted state on restart.
+
     def _restore_delay_queues(self) -> None:
+        """Repopulate delay queues from the last persisted state on restart."""
 
         self._delay_actuation_queue.clear()
         self._delay_observation_queue.clear()

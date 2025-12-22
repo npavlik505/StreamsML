@@ -4,6 +4,7 @@ use clap::Subcommand;
 use clap::ValueEnum;
 use clap::Args as ClapArgs;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// utilities for working with the streams solver
 #[derive(Parser, Debug)]
@@ -317,6 +318,138 @@ fn positive_f64(val: &str) -> Result<f64, String> {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ObsPoint {
+    pub(crate) x: usize,
+    pub(crate) y: usize,
+}
+
+impl std::str::FromStr for ObsPoint {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let mut parts = value.split(',');
+        let x = parts
+            .next()
+            .ok_or_else(|| format!("invalid obs point `{value}`"))?
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| format!("invalid obs point `{value}` (x must be a number)"))?;
+        let y = parts
+            .next()
+            .ok_or_else(|| format!("invalid obs point `{value}`"))?
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| format!("invalid obs point `{value}` (y must be a number)"))?;
+        if parts.next().is_some() {
+            return Err(format!("invalid obs point `{value}` (expected format: x,y)"));
+        }
+        Ok(Self { x, y })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub(crate) struct ObsPointList(pub(crate) Vec<ObsPoint>);
+
+impl ObsPointList {
+    fn parse_parenthesized(value: &str) -> Result<Vec<ObsPoint>, String> {
+        let mut remaining = value.trim();
+        let mut points = Vec::new();
+
+        while !remaining.trim_start().is_empty() {
+            remaining = remaining.trim_start();
+            if !remaining.starts_with('(') {
+                return Err(format!(
+                    "invalid obs points `{value}` (expected format: (x,y)(x,y))"
+                ));
+            }
+
+            let close_index = remaining.find(')').ok_or_else(|| {
+                format!("invalid obs points `{value}` (missing closing ')')")
+            })?;
+            let inner = remaining[1..close_index].trim();
+            if inner.is_empty() {
+                return Err(format!(
+                    "invalid obs points `{value}` (empty point found, expected format: (x,y)(x,y))"
+                ));
+            }
+
+            let point = ObsPoint::from_str(inner).map_err(|err| {
+                format!("{err}; expected format: (x,y)(x,y)")
+            })?;
+            points.push(point);
+            remaining = &remaining[close_index + 1..];
+        }
+
+        if points.is_empty() {
+            return Err(format!(
+                "invalid obs points `{value}` (expected format: (x,y)(x,y))"
+            ));
+        }
+
+        Ok(points)
+    }
+}
+
+impl std::str::FromStr for ObsPointList {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(
+                "obs points cannot be empty (expected format: (x,y)(x,y) or x,y;x,y)"
+                    .to_string(),
+            );
+        }
+
+        let points = if trimmed.contains('(') || trimmed.contains(')') {
+            Self::parse_parenthesized(trimmed)?
+        } else if trimmed.contains(';') {
+            let mut points = Vec::new();
+            for part in trimmed.split(';') {
+                let part = part.trim();
+                if part.is_empty() {
+                    return Err(format!(
+                        "invalid obs points `{value}` (expected format: x,y;x,y)"
+                    ));
+                }
+                let point = ObsPoint::from_str(part).map_err(|err| {
+                    format!("{err}; expected format: x,y;x,y")
+                })?;
+                points.push(point);
+            }
+            points
+        } else {
+            vec![ObsPoint::from_str(trimmed).map_err(|err| {
+                format!("{err}; expected format: (x,y)(x,y) or x,y;x,y")
+            })?]
+        };
+
+        Ok(Self(points))
+    }
+}
+
+impl From<ObsPointList> for Vec<ObsPoint> {
+    fn from(points: ObsPointList) -> Self {
+        points.0
+    }
+}
+
+impl std::fmt::Display for ObsPointList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut iter = self.0.iter();
+        if let Some(first) = iter.next() {
+            write!(f, "{},{}", first.x, first.y)?;
+            for point in iter {
+                write!(f, ";{},{}", point.x, point.y)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 // ----------------------------------FLOW TYPE----------------------------------
 
 #[derive(ValueEnum, Debug, Clone, Serialize, Deserialize)]
@@ -465,6 +598,10 @@ pub(crate) struct ConstantArgs {
     
     #[clap(long)] 
     pub(crate) amplitude: f64,
+
+    #[clap(long, default_value_t = 1)]
+    /// number of steps to hold each actuation value before updating
+    pub(crate) actuation_interval: usize,
 }
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SinusoidalArgs {
@@ -479,6 +616,10 @@ pub(crate) struct SinusoidalArgs {
     
     #[clap(long)] 
     pub(crate) angular_frequency: f64,
+
+    #[clap(long, default_value_t = 1)]
+    /// number of steps to hold each actuation value before updating
+    pub(crate) actuation_interval: usize,
 }
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct DMDcArgs {
@@ -490,6 +631,10 @@ pub(crate) struct DMDcArgs {
     
     #[clap(long)] 
     pub(crate) amplitude: f64,
+
+    #[clap(long, default_value_t = 1)]
+    /// number of steps to hold each actuation value before updating
+    pub(crate) actuation_interval: usize,
 }
 
 // JET ACTUATOR: Classical Actuator Parameters
@@ -524,6 +669,15 @@ pub(crate) struct OppArgs {
     
     #[clap(long)]
     pub(crate) obs_yend: usize,
+
+    #[clap(long)]
+    /// Explicit observation points as x,y pairs.
+    /// Provide multiple points with a single flag, e.g. --obs-points "(10,5)(12,6)"
+    /// or --obs-points "10,5;12,6".
+    /// When provided (or obs_points_file is set in input.json), this overrides
+    /// obs_xstart/obs_xend/obs_ystart/obs_yend.
+    #[clap(default_value_t)]
+    pub(crate) obs_points: ObsPointList,
     
     #[clap(long, default_value = "undefined")] 
     pub(crate) organized_motion: String,
@@ -536,6 +690,10 @@ pub(crate) struct OppArgs {
 
     #[clap(long, default_value_t = 1)]
     pub(crate) lag_steps: usize,
+
+    #[clap(long, default_value_t = 1)]
+    /// number of steps to hold each actuation value before updating
+    pub(crate) actuation_interval: usize,
 }
 
 // JET ACTUATOR: LearningBased Actuator Parameters
@@ -577,12 +735,25 @@ pub(crate) struct DdpgArgs {
     
     #[clap(long)]
     pub(crate) obs_yend: usize,
+
+    #[clap(long)]
+    /// Explicit observation points as x,y pairs.
+    /// Provide multiple points with a single flag, e.g. --obs-points "(10,5)(12,6)"
+    /// or --obs-points "10,5;12,6".
+    /// When provided (or obs_points_file is set in input.json), this overrides
+    /// obs_xstart/obs_xend/obs_ystart/obs_yend.
+    #[clap(default_value_t)]
+    pub(crate) obs_points: ObsPointList,
     
     #[clap(long, default_value_t = 1.0)] 
     pub(crate) amplitude: f64,
 
     #[clap(long, default_value_t = 1)]
     pub(crate) lag_steps: usize,
+
+    #[clap(long, default_value_t = 1)]
+    /// number of steps to hold each actuation value before updating
+    pub(crate) actuation_interval: usize,
 
     #[clap(long, default_value_t = 10)]
     pub(crate) train_episodes: usize,
@@ -653,12 +824,25 @@ pub(crate) struct DqnArgs {
     
     #[clap(long)]
     pub(crate) obs_yend: usize,
+
+    #[clap(long)]
+    /// Explicit observation points as x,y pairs.
+    /// Provide multiple points with a single flag, e.g. --obs-points "(10,5)(12,6)"
+    /// or --obs-points "10,5;12,6".
+    /// When provided (or obs_points_file is set in input.json), this overrides
+    /// obs_xstart/obs_xend/obs_ystart/obs_yend.
+    #[clap(default_value_t)]
+    pub(crate) obs_points: ObsPointList,
     
     #[clap(long, default_value_t = 1.0)] 
     pub(crate) amplitude: f64,
 
     #[clap(long, default_value_t = 1)]
     pub(crate) lag_steps: usize,
+
+    #[clap(long, default_value_t = 1)]
+    /// number of steps to hold each actuation value before updating
+    pub(crate) actuation_interval: usize,
 
     #[clap(long, default_value_t = 10)]
     pub(crate) train_episodes: usize,
@@ -741,6 +925,10 @@ pub(crate) struct PpoArgs {
 
     #[clap(long, default_value_t = 1)]
     pub(crate) lag_steps: usize,
+
+    #[clap(long, default_value_t = 1)]
+    /// number of steps to hold each actuation value before updating
+    pub(crate) actuation_interval: usize,
 
     #[clap(long, default_value_t = 10)]
     pub(crate) train_episodes: usize,

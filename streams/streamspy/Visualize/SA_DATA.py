@@ -6,8 +6,17 @@ import h5py
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Plot shear stress, energy and dissipation rate against time
+
 def run_sadata(sa_path: Path, output_dir: Path) -> None:
+    """Plot shear stress, energy and dissipation rate against time.
+
+    Parameters
+    ----------
+    sa_path:
+        Path to ``span_averages.h5`` file.
+    output_dir:
+        Directory where the figures should be written.
+    """
 
     with h5py.File(sa_path, "r") as sa:
         time = sa["time"][:]

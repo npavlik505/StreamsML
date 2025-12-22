@@ -5,4 +5,4 @@ Utility commands for building, running, and distributing cases from the `streams
 ## Building / Running streams 
 
 The [lab documentation page](https://github.com/fluid-Dynamics-Group/tutorials) 
-has information about compiling and running this project (including on GPU). 
+has extensive information about compiling and running this project (including on GPU). 

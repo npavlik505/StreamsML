@@ -305,6 +305,59 @@ pub(crate) struct Config {
 }
 
 impl Config {
+    fn parse_obs_points(value: &serde_json::Value) -> Result<Vec<(usize, usize)>, ConfigError> {
+        let serde_json::Value::Array(points) = value else {
+            return Err(ConfigError::Custom(
+                "obs_points must be an array of [x,y] pairs or {x,y} objects".to_string(),
+            ));
+        };
+
+        let mut parsed = Vec::with_capacity(points.len());
+        for (idx, point) in points.iter().enumerate() {
+            let coords = match point {
+                serde_json::Value::Array(coords) => {
+                    if coords.len() != 2 {
+                        return Err(ConfigError::Custom(format!(
+                            "obs_points[{idx}] must have exactly 2 elements"
+                        )));
+                    }
+                    let x = coords[0].as_u64().ok_or_else(|| {
+                        ConfigError::Custom(format!(
+                            "obs_points[{idx}] x coordinate must be an integer"
+                        ))
+                    })?;
+                    let y = coords[1].as_u64().ok_or_else(|| {
+                        ConfigError::Custom(format!(
+                            "obs_points[{idx}] y coordinate must be an integer"
+                        ))
+                    })?;
+                    (x as usize, y as usize)
+                }
+                serde_json::Value::Object(map) => {
+                    let x = map.get("x").and_then(|v| v.as_u64()).ok_or_else(|| {
+                        ConfigError::Custom(format!(
+                            "obs_points[{idx}] missing integer x coordinate"
+                        ))
+                    })?;
+                    let y = map.get("y").and_then(|v| v.as_u64()).ok_or_else(|| {
+                        ConfigError::Custom(format!(
+                            "obs_points[{idx}] missing integer y coordinate"
+                        ))
+                    })?;
+                    (x as usize, y as usize)
+                }
+                _ => {
+                    return Err(ConfigError::Custom(format!(
+                        "obs_points[{idx}] must be [x,y] or {{x,y}}"
+                    )));
+                }
+            };
+            parsed.push(coords);
+        }
+
+        Ok(parsed)
+    }
+
     /// load the config data at a given path with `serde_json`
     pub(crate) fn from_path(path: &Path) -> Result<Self, Error> {
         // load the config file specified
@@ -408,6 +461,24 @@ impl Config {
                         "obs-ystart ({ys}) and obs-yend ({ye}) must be between 1 and y_divisions ({})",
                         self.y_divisions
                     )));
+                }
+            }
+
+            if let Some(obs_points_value) = self.blowing_bc.params.get("obs_points") {
+                let obs_points = Self::parse_obs_points(obs_points_value)?;
+                for (idx, (x, y)) in obs_points.iter().copied().enumerate() {
+                    if x < 1 || x > self.x_divisions {
+                        return Err(ConfigError::Custom(format!(
+                            "obs_points[{idx}] x ({x}) must be between 1 and x_divisions ({})",
+                            self.x_divisions
+                        )));
+                    }
+                    if y < 1 || y > self.y_divisions {
+                        return Err(ConfigError::Custom(format!(
+                            "obs_points[{idx}] y ({y}) must be between 1 and y_divisions ({})",
+                            self.y_divisions
+                        )));
+                    }
                 }
             }
         }

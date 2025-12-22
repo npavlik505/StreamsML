@@ -82,6 +82,21 @@ subroutine wrap_get_w_avzg_slice(w_avzg_out, obs_xstart, obs_xend, obs_ystart, o
     w_avzg_out(1,:,:) = real(w_avzg(obs_type, obs_xstart:obs_xend, obs_ystart:obs_yend), kind=c_float)
 end subroutine wrap_get_w_avzg_slice
 
+subroutine wrap_get_w_avzg_points(values_out, xs, ys, n_points, obs_type) bind(C, name="wrap_get_w_avzg_points")
+    use iso_c_binding, only: c_int, c_float
+    use mod_streams,      only: w_avzg
+    !f2py intent(c) wrap_get_w_avzg_points
+    !f2py intent(out) values_out
+    implicit none
+    integer(c_int), intent(in), value :: n_points, obs_type
+    integer(c_int), intent(in) :: xs(n_points), ys(n_points)
+    real(c_float), intent(out) :: values_out(n_points)
+    integer :: i
+    do i = 1, n_points
+        values_out(i) = real(w_avzg(obs_type, xs(i), ys(i)), kind=c_float)
+    end do
+end subroutine wrap_get_w_avzg_points
+
 subroutine wrap_get_x_start_slot(val) bind(C, name="wrap_get_x_start_slot")
     use iso_c_binding
     use mod_streams, only: x_start_slot

@@ -34,6 +34,13 @@ class Group():
 # 
 #         self.file = h5py.File(filename, 'w', driver='mpio', comm = MPI.COMM_WORLD)
 class IoFile:
+    """
+    IoFile(filename, mode='w', comm=None)
+
+    - If comm is None  -> open SERIAL HDF5 (no 'mpio' driver), using libver='latest'
+    - If comm is MPI communicator -> open PARALLEL HDF5 with driver='mpio' on that communicator.
+      (Opening with mpio is collective; all ranks on 'comm' must participate.)
+    """
     def __init__(self, filename: str, mode: str = 'w', comm=None, libver: Optional[str] = 'latest'):
         self.rank = 0
         if comm is None:
