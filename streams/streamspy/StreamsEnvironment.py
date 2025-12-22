@@ -807,12 +807,16 @@ class StreamsGymEnv(gymnasium.Env):
                     finished_entry = self.action_queue.popleft()
                     convection = int(min(np.ceil(finished_entry["x_index"]), len(tau_post_jet)))
                     if convection > 0:
-                        tau_avg = float(np.mean(tau_post_jet[:convection]))
-                    cf_instant = tau_avg / self.Cf_den
-                    weight_slice = self.lambda_trace[:convection]
-                    # Use the mean lambda weight across the convected segment.
-                    lambda_weight = float(np.mean(weight_slice)) if convection > 0 else 0.0
-                    reward = -lambda_weight * cf_instant
+                        tau_segment = tau_post_jet[:convection]
+                        cf_values = tau_segment / self.Cf_den
+                        weight_slice = self.lambda_trace[:convection]
+                        lambda_weights = weight_slice[::-1]
+                        tau_avg = float(np.mean(tau_segment))
+                        cf_instant = float(np.mean(cf_values))
+                        lambda_weight = float(np.mean(lambda_weights))
+                        reward = -float(np.sum(lambda_weights * cf_values))
+                    else:
+                        reward = 0.0
                     reward_ready = True
                 else:
                     reward = 0.0
