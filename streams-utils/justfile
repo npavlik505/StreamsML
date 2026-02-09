@@ -1,56 +1,60 @@
+# Don't modify; works for BL and SBLI
 database_bl := "$STREAMS_DIR/examples/supersonic_sbli/database_bl.dat"
-
-help recipe_or_flag='':
-    python recipes/recipe_help.py {{recipe_or_flag}}
-
-nv:
-	mkdir -p $APPTAINER_TMPDIR
-
-	rm -f nv.sandbox
-
-	taskset -c 0-15 sudo apptainer build --sandbox \
-		nv.sandbox \
-		"docker://nvcr.io/nvidia/nvhpc:24.7-devel-cuda_multi-ubuntu22.04"	
-
-base:
-	mkdir -p $APPTAINER_TMPDIR
-
-	rm -f base.sandbox 
-	echo $APPTAINER_TMPDIR
-	time taskset -c 0-15 sudo -E apptainer build --sandbox --nv base.sandbox base.apptainer
-	sudo du -sh base.sandbox
-
-build:
-	rm -f streams.sif
-	echo $APPTAINER_TMPDIR
-	test -e libstreams*.so && rm libstreams*.so || true
-	# f2py -m libstreamsMin -h ./libstreamsMin.pyf --overwrite-signature ${STREAMS_DIR}/src/min_api.F90
-	# f2py -m libstreamsMod -h ./libstreamsMod.pyf --overwrite-signature ${STREAMS_DIR}/src/mod_api.F90
-	# python3 patch_pyf.py
-	time taskset -c 0-15 sudo -E apptainer build --nv streams.sif build.apptainer
-	du -sh streams.sif
-
-
-
-#streams_flow_type := "shock-boundary-layer"
-streams_flow_type := "boundary-layer"
-
-# build a config json file as input to the solver
+# Don't modify unless you know what you're doing; all Python scripts expect this directory structure
+input_dir := "$STREAMS_DIR/streamspy/output/input"
+dist_dir  := "$STREAMS_DIR/streamspy/output/distribute_save"
 streamspy_dir := "$STREAMS_DIR/streamspy"
 results_dir := "$STREAMS_DIR/streamspy/output"
 eval := "$STREAMS_DIR/streamspy/output/LB_GymData/evaluation.h5"
 training := "$STREAMS_DIR/streamspy/output/LB_GymData/training.h5"
 checkpoint := "$STREAMS_DIR/streamspy/output/LB_GymData/checkpoints"
+
+
+
+# Used to access the recipe/flag help functions.
+# Quick overview: just help groups <recipe>
+# Subcommands: list, tree, show <recipe>, groups <recipe>, find <flag>.
+# See recipes/recipe_help.py for the authoritative help text (keep in sync).
+help *recipe_or_flag:
+    python3 recipes/recipe_help.py {{recipe_or_flag}}
+
+
+
+# Three part build process: nvidia HPC container image (nv), software packages (base), code compilation and wrapping (build)
+# Reference base.apptainer and build.apptianer for the latter two
+nv:
+	mkdir -p "${APPTAINER_TMPDIR:-$HOME/AppTmpDir}"
+	rm -f nv.sandbox
+	APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-$HOME/AppTmpDir}" taskset -c 0-15 sudo apptainer build --sandbox \
+		nv.sandbox \
+		"docker://nvcr.io/nvidia/nvhpc:24.7-devel-cuda_multi-ubuntu22.04"	
+
+base:
+	mkdir -p "${APPTAINER_TMPDIR:-$HOME/AppTmpDir}"
+	rm -f base.sandbox 
+	echo "${APPTAINER_TMPDIR:-$HOME/AppTmpDir}"
+	APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-$HOME/AppTmpDir}" \
+		time taskset -c 0-15 sudo -E apptainer build --sandbox --nv base.sandbox base.apptainer
+	sudo du -sh base.sandbox
+
+build:
+	rm -f streams.sif
+	echo "${APPTAINER_TMPDIR:-$HOME/AppTmpDir}"
+	test -e libstreams*.so && rm libstreams*.so || true
+	APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-$HOME/AppTmpDir}" \
+		time taskset -c 0-15 sudo -E apptainer build --nv streams.sif build.apptainer
+	du -sh streams.sif
+
+
+
+# Choose the simulation flow type "boundary-layer" or "shock-boundary-layer"
+streams_flow_type := "shock-boundary-layer"
+
+# If restarting from saved parameters, choose "initial", "ep_####" (<-zero-padded), "final", or "best" (<-default)
 checkpoint_tag := "best"
 
-
-input_dir := "$STREAMS_DIR/streamspy/output/input"
-dist_dir  := "$STREAMS_DIR/streamspy/output/distribute_save"
-
-
-# build a config json file as input to the solver
+# Build a config json file for Python use and config dat file for Fortran solver
 config_output := "$STREAMS_DIR/streamspy/output/input.json"
-
 config:
 	# create output directory if it does not exist
 	test -d {{results_dir}} || mkdir -p {{results_dir}}
@@ -78,7 +82,7 @@ config:
 		--nymax-wr 201 \
 		--sensor-threshold 0.1 \
 		--restart-flag 1 \
-		--dtsave-restart 33.756 \
+		--dtsave-restart 33.0 \
 		--fixed-dt .0008439 \
 		--shock-impingement 15.0 \
 		--shock-angle 8.0 \
@@ -87,13 +91,12 @@ config:
 		    --slot-end 249 \
 		    --obs-type u \
 		    --obs-points "(257,146)(305,76)(297,20)(304,106)(322,42)(268,23)(322,80)(1,20)(287,14)(409,20)(316,18)(305,91)(484,26)(305,31)(379,55)(283,63)(297,46)(344,18)(506,30)(313,68)(433,32)(391,16)(362,56)(460,39)(280,27)(312,84)(333,78)(294,84)(332,53)(303,8)(526,39)(330,20)(321,63)(294,68)(347,71)(253,18)(315,53)(354,100)(368,14)(293,99)(380,19)(578,30)(11,17)(446,36)(325,101)(291,42)(307,58)(547,22)(408,71)(186,16)(473,38)(339,98)(323,12)(283,83)(372,88)(309,96)(298,7)(503,72)(271,46)(302,63)(392,78)(594,28)(423,31)(292,7)" \
-		    --obs-xstart 80 \
-		    --obs-xend 95 \
+		    --obs-xstart 200 \
+		    --obs-xend 220 \
 		    --obs-ystart 1 \
 		    --obs-yend 25 \
 		    --actuation-interval 100 \
 		    --lag-steps 10000 \
-		    --sensor-actuator-delay \
 		    --train-episodes 1 \
 		    --training-output {{training}} \
 		    --eval-episodes 1 \
@@ -111,6 +114,10 @@ config:
 
 	cat {{config_output}}
 
+
+
+# Run the software. Note that the only edits to make here are appending the appropriate training, evaluation, or checkpoint flag 
+# (see ADDITIONAL RUN OPTIONS below)
 run:
     #!/usr/bin/env sh
     set -eu
@@ -131,6 +138,7 @@ run:
         $checkpoint_bind_arg \
         $STREAMS_UTILS_DIR/streams.sif \
         /usr/local/bin/streams-utils run-container \
+        --train-only \
 
 # ADDITIONAL RUN OPTIONS (LearningBased ONLY)
 # To evaluate existing parameters: Append the --eval-only AND --checkpoint to the end of the run recipe (i.e. under /usr/local/...).
@@ -141,6 +149,9 @@ run:
 #	  --checkpoint "/checkpoints/{{checkpoint_tag}}"
 
 
+
+# Below are various analysis, model, and visualize recipes.
+# Note: These can be deleted if you deem the helper functions and yaml conveniently and comprehensively document available recipes. 
 
 #analysis:
 #        apptainer exec --nv \
@@ -200,6 +211,8 @@ visualize:
 #                --episode-tag ep_0000 \
 #                --vis-type sa_data \
 
+# NOTE: Only one `model` recipe should be left uncommented at a time.
+# Recipe A (run_dmdc) - active
 model:
         apptainer exec --nv \
                 --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
@@ -208,9 +221,53 @@ model:
                 --results_dir {{results_dir}} \
                 --episode-tag ep_0000 \
                 --model-type dmdc \
-                --energy 100 \
+                --workflow run_dmdc \
+                # energy is the remaining energy after POD mode truncation; value between 0 and 100 \
+                --energy 90 \
+                # velocity components 1, 2, 3 correspond to u, v, w; default is sequence 1,2,3 \
+                --velocity-components 1,2,3 \
+                ## RAM management options; default is 16 for both \
+                #--block-rows 16 \
+                #--time-batch 16 \
+
+# NOTE: Only one `model` recipe should be left uncommented at a time.
+# Recipe B (validate_rom) - commented
+# model:
+#         apptainer exec --nv \
+#                 --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
+#                 ./streams.sif \
+#                 python3 /streamspy/Modeling/modeling_main.py \
+#                 --results_dir {{results_dir}} \
+#                 --episode-tag ep_0000 \
+#                 --model-type dmdc \
+#                 --workflow validate_rom \
+#                 --energy 90 \
+#		  --velocity-components 1,2,3 \
+#                 --validation-sa {{validation_sa}} \
+#                 --validation-traj {{validation_traj}} \
+#		  --compute-pointwise-error \
+#                 # --case-label "sbli" \
+#                 # --time-batch 16 \
+
+# NOTE: Only one `model` recipe should be left uncommented at a time.
+# Recipe C (plotting) - commented
+# model:
+#         apptainer exec --nv \
+#                 --bind {{results_dir}}/distribute_save:/distribute_save,{{results_dir}}/input:/input \
+#                 ./streams.sif \
+#                 python3 /streamspy/Modeling/modeling_main.py \
+#                 --results_dir {{results_dir}} \
+#                 --episode-tag ep_0000 \
+#                 --model-type dmdc \
+#                 --workflow plot_modes \
+#                 --energy 90 \
+#                 --n-modes 5 \
+#                 --velocity-components 1,2,3 \
 	
-	
+
+
+
+
 # get a shell inside the container
 # requires the ./output directory (with its associated folders) to be created, 
 # and a ./streams.sif file to be made

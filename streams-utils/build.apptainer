@@ -121,7 +121,7 @@ From: base.sandbox
         pip freeze | grep numpy
 
         echo "📦 Installing STREAMS Python analysis stack"
-        export PIP_NO_BINARY=h5py,mpi4py
+        # export PIP_NO_BINARY=h5py,mpi4py
         python3 -m pip install --no-cache-dir -r /streams-utils/requirements.txt
 
         # copy the shared object to site packages so it is globally importable

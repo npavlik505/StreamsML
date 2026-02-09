@@ -23,7 +23,8 @@ def run_pysensors(sa_path: Path, output_dir: Path, num_sensors: int = 10) -> Pat
         ) from exc
 
     # Grab mesh and span averages for plotting and datasets
-    with h5py.File(sa_path.with_name("mesh.h5"), "r") as m:
+    mesh_path = sa_path.with_name("mesh.h5")
+    with h5py.File(mesh_path, "r") as m:
         xg = np.asarray(m["x_grid"][:]).squeeze()  # (nx,)
         yg = np.asarray(m["y_grid"][:]).squeeze()  # (ny,)
 
@@ -33,12 +34,13 @@ def run_pysensors(sa_path: Path, output_dir: Path, num_sensors: int = 10) -> Pat
     # Measurements is rho=0, U=1, V=2
     illustration = sa[-2, 1, :, :]    # The final snapshot is used for background, shape is nx, ny. sa[-1, (0:rho, 1:u, 2:v, 3:w, 4:E), :, :] 
     u = sa[:, 1, :, :]
-    v = sa[:, 2, :, :]
+    #v = sa[:, 2, :, :]
     snapshots, nx, ny = u.shape
 
     # Feature matrix for SSPOR; U and V
-    data = np.concatenate([u.reshape(snapshots, -1),
-                           v.reshape(snapshots, -1)], axis=1)
+    #data = np.concatenate([u.reshape(snapshots, -1),
+    #                       v.reshape(snapshots, -1)], axis=1)
+    data = u.reshape(snapshots, -1)
 
     model = SSPOR(n_sensors=num_sensors)
     model.fit(data)
@@ -72,7 +74,8 @@ def run_pysensors(sa_path: Path, output_dir: Path, num_sensors: int = 10) -> Pat
     if cf is not None:
         fig.colorbar(cf, ax=ax, shrink=0.4, fraction=0.1)
 
-    ax.set_aspect("equal", adjustable="box")
+    #ax.set_aspect("equal", adjustable="box")
+    plt.axis('scaled')
     ax.set_xlabel("x")
     ax.set_ylabel("y")
 
@@ -101,8 +104,8 @@ def run_pysensors(sa_path: Path, output_dir: Path, num_sensors: int = 10) -> Pat
                    zorder=5)
 
     # Single legend (outside the loop)
-    ax.scatter([], [], s=30, c="blue", edgecolors="white", linewidths=0.6, label="U sensors")
-    ax.scatter([], [], s=30, c="red",  edgecolors="white", linewidths=0.6, label="V sensors")
+    ax.scatter([], [], s=30, c="blue", edgecolors="white", linewidths=0.6, label="Optimal Sensor Locations")
+    # ax.scatter([], [], s=30, c="red",  edgecolors="white", linewidths=0.6, label="V sensors")
     ax.legend(loc="upper right", frameon=True, framealpha=0.65)
 
     # Ensure output dir exists before saving files
@@ -141,4 +144,3 @@ def run_pysensors(sa_path: Path, output_dir: Path, num_sensors: int = 10) -> Pat
 
     print(f"Sensing results written to {out_file}")
     return out_file
-

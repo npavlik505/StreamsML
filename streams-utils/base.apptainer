@@ -22,6 +22,7 @@ From: nv.sandbox
         nvhpc-24-7=24.7-0 \
         --snapshot 20250419T000000Z
 # nvhpc-24-7=24.7-0 nvhpc-cuda-12-4=24.7-0 \
+    apt install -y python3-mpi4py --snapshot 20250419T000000Z
 
     echo "=== Cleaning pip cache ==="
     pip3 cache purge
@@ -36,14 +37,20 @@ From: nv.sandbox
     pip3 install --no-cache-dir \
         'setuptools==68.2.2' 'wheel==0.43.0'
 
-    echo "=== Installing numpy and mpi4py ==="
-    # CFLAGS=-noswitcherror pip3 install numpy mpi4py --upgrade
+    echo "=== Installing numpy (mpi4py from snapshot package to mirror host behavior and avoid pip build isolation) ==="
+    # CFLAGS=-noswitcherror pip3 install numpy --upgrade
     NUMPY_VER=1.26.4
-    MPI4PY_VER=3.1.5
     CFLAGS=-noswitcherror \
     pip3 install --no-cache-dir \
-        numpy==${NUMPY_VER} \
-        mpi4py==${MPI4PY_VER}
+        numpy==${NUMPY_VER}
+
+    echo "=== Installing h5py build requirements ==="
+    pip3 install --no-cache-dir \
+        'Cython==3.0.10' \
+        "oldest-supported-numpy==2023.12.21; python_version=='3.8'" \
+        "numpy==${NUMPY_VER}" \
+        'pkgconfig==1.5.5' \
+        'setuptools==68.2.2'
 
     echo "=== Cloning and building h5py with MPI support ==="
     cd /
@@ -52,7 +59,7 @@ From: nv.sandbox
     cd h5py
     export CC=mpicc
     export HDF5_MPI=ON
-    CFLAGS=-noswitcherror pip3 install --no-binary=h5py .
+    CFLAGS=-noswitcherror pip3 install --no-binary=h5py --no-build-isolation .
 
     echo "=== Verifying h5py build ==="
     cd /
@@ -75,4 +82,3 @@ From: nv.sandbox
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.74.1
     export PATH="$HOME/.cargo/bin:$PATH"
     echo "Rust installed at: $(which cargo)"
-

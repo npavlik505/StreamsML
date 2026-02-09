@@ -1,6 +1,6 @@
 database_bl := "$STREAMS_DIR/examples/supersonic_sbli/database_bl.dat"
 
-help recipe_or_flag='':
+help *recipe_or_flag:
     python recipes/recipe_help.py {{recipe_or_flag}}
 
 nv:
