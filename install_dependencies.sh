@@ -164,14 +164,17 @@ else
   streamsenv/bin/python -m pip install --no-cache-dir -r ./streams-utils/venv_reqs.txt
 fi
 
-# Install just using cargo
-if ! command -v just >/dev/null 2>&1; then
-  RUSTUP_INIT_SKIP_PATH_CHECK=1 \
-	  curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
-fi
+# Install just using cargo (project-local Rust/Cargo dirs: .rustup, .cargo).
+# Delete these directories to reset the local Rust toolchain.
+export RUSTUP_HOME="${PWD}/.rustup"
+export CARGO_HOME="${PWD}/.cargo"
+export PATH="${CARGO_HOME}/bin:${PATH}"
 
-source "${HOME}/.cargo/env"
-export PATH="${HOME}/.cargo/bin:${PATH}"
+if ! command -v rustup >/dev/null 2>&1 || ! command -v cargo >/dev/null 2>&1; then
+  export RUSTUP_INIT_SKIP_PATH_CHECK=1
+  curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+  unset RUSTUP_INIT_SKIP_PATH_CHECK
+fi
 
 RUST_TOOLCHAIN_VERSION="1.75.0"
 JUST_VERSION="1.38.0"
@@ -182,5 +185,5 @@ rustup toolchain install "${RUSTUP_BOOTSTRAP_TOOLCHAIN}" --profile minimal
 rustup default "${RUST_TOOLCHAIN_VERSION}"
 
 if ! command -v just >/dev/null 2>&1; then
-	cargo +${RUSTUP_BOOTSTRAP_TOOLCHAIN} install just --version "${JUST_VERSION}"
+  cargo +${RUSTUP_BOOTSTRAP_TOOLCHAIN} install just --version "${JUST_VERSION}"
 fi
