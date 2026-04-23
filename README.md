@@ -1,132 +1,124 @@
 # StreamsML
-StreamsML is a control, modeling, and analysis platform for compressible flow simulations that couples a Python/Gymnasium interface with the STREAmS solver (https://github.com/matteobernardini/STREAmS). StreamsML adds a fully customizable jet actuator to a simulation of high-speed boundary layer flow, allowing the user to test their own control strategies, including open-loop, classical, and machine-learning based strategies, in addition to reduced-order modeling methods and analysis methods.
 
-### Motivation
-Modern flow-control research often requires combining high-fidelity simulations capable of simulating high-speed flow that are compatible with new control methods, such as machine learning, with reproducible environments and HPC tooling. StreamsML was built to make those workflows more standardized and easier to run. With it, you can:
-- Run boundary-layer flow simulations, with and without impinging shock, using existing open-loop, classical, or machine learning-based control methods, or add your own. 
-- Perform proper orthogonal decomposition (POD), dynamic mode decomposition with (DMDc) or without (DMD) control, or add your own modeling and analysis tools. 
-- Visualize the flow via an animation or snapshot.
-- Plot select flow characteristics like wall shear stress or energy
+StreamsML is a control, modeling, and analysis platform for compressible flow simulations built around the [STREAmS solver](https://github.com/matteobernardini/STREAmS) and a Python/Gymnasium interface. It extends STREAmS with a customizable jet actuator and a workflow for testing control, reduced-order modeling, and analysis methods on high-speed boundary-layer and shock/boundary-layer-interaction simulations.
 
-### Repository structure
-- `streams/` — solver-related code
-- `streams-utils/` — build/run/distribution utilities
+## What StreamsML is for
+
+StreamsML was built to make high-fidelity flow-control experiments more reproducible and easier to modify. It provides a structured environment for:
+
+- running boundary-layer (BL) and shock/boundary-layer-interaction (SBLI) simulations,
+- testing open-loop, classical, and learning-based control methods,
+- applying reduced-order modeling methods such as POD, DMD, and DMDc, and
+- generating analysis and visualization outputs from simulation results.
+
+## Repository structure
+
+- `streams/` — solver-side code, Python interface, control/modeling/analysis modules, and simulation assets
+- `streams-utils/` — build, configuration, and execution utilities
 - `install_dependencies.sh` — environment bootstrap script
+- `README.md` — overview and quick-start instructions
+- `rust-toolchain.toml` — Rust toolchain pinning for the utilities
 
-### Personal Contributions
-The original STREAmS solver was written in Fortran and lacked an actuator or control method. Work had been done by a former graduate student to modify STREAmS with a jet actuator and open loop control, though due to version drift the software could not be built when I began working on the project. My contributions are listed below:
-- Updated and pinned software in build process
-- Added reproducible utilities for setup and execution
-- Re-wrapped Fortran routines in Python and extended their functionality
-- Created a Python-based control experimentation workflow for machine learning as well as non-learning based control strategies.
-- Created a Python-based modeling and analysis experimentation workflow
+## Personal contributions
 
-## User Instructions
+The original STREAmS solver was written in Fortran. Prior work in the lab had introduced a jet actuator and open-loop control capability, but the software was no longer reproducibly buildable when I began working on it. My work on StreamsML focused on making the platform usable as a repeatable experimentation environment for reinforcement learning and other complex forms of control:
 
-The instructions below guide the user in building, configuring, and running a simulation using a pre-existing control strategy. Instruction on how to run pre-existing modeling, analysis, and visualization routines as well as how to add your own control, modeling, and analysis methods can be found in the [Detailed user instructions (PDF)](streams/svgs/StreamsMLmanual.pdf). 
+- updated and pinned the build environment,
+- added reproducible setup and execution utilities,
+- re-wrapped and extended Fortran routines for Python-side use,
+- designed and implemented a Python-based control framework for both classical and learning-based methods, and
+- created a Python-based modeling and analysis workflow.
 
-All user actions in the following instructions take place in the streams-utils subdirectory of StreamsML.
+## Quick start
 
-## Software Build Instructions
+For detailed usage beyond a standard run, see the [detailed user instructions (PDF)](streams/svgs/StreamsMLmanual.pdf).
 
-> - Setup  
->   - Check your OS' minimum CUDA driver requirements  
->   - Execute install_dependencies.sh to add required paths to your bash file, create a virtual environment, and install local software dependencies therein.  
-> - Build  
->   - Sequentially run "just nv", "just base", "just build" to create the final streams.sif container in which the software will run.
-##
+All commands below are run from the `streams-utils/` directory unless noted otherwise.
 
-### Setup
+### 1. Clone the repository
 
-> **After checking the system requirements below, clone the StreamsML repository**
->
-> ```bash
-> git clone https://github.com/Fluid-Dynamics-Group/StreamsML.git --depth 1
-> ```
->
-> **Then add paths to the two directories within StreamsML into your bashrc, sourcing your bashrc file afterwards to apply the changes**
->
-> ```bash
-> export STREAMS_DIR="/path/to/your/streams"
-> export STREAMS_UTILS_DIR="/path/to/your/streams-utils"
-> ```
->
-> **Next, execute install_dependencies.sh to create a virtual environment and install dependencies.**
->
-> ```bash
-> chmod +x install_dependencies.sh
-> bash install_dependencies.sh
-> ```
->
-> **Note: executing the bash file should install Apptainer, but if you encounter trouble, please reference Apptainer's online documentation and install it directly from Apptainer**
->
-> ```
-> https://apptainer.org/docs/admin/main/installation.html
-> ```
+```bash
+git clone https://github.com/npavlik505/StreamsML.git --depth 1
+cd StreamsML
+```
 
-**Components of modSTREAmS build:**
+### 2. Set the required paths
 
-- NVIDIA HPC SDK: A docker image, provided by Nvidia, to contain the libraries and tools required for GPU-accelerated, portable HPC modeling and simulation applications.
-- base.apptainer: An apptainer image used to install required software, such as PyTorch, h5py, and an Ubuntu OS.
-- build.apptainer: An apptainer image used to compile the Fortran and Rust code, and bind the Python code to the built streams.sif container.
+Add the following paths to your shell configuration and reload it:
 
-**System Requirements**  
-In order to use Nvidia HPC SDK, version 24.7-devel-cuda_multi-ubuntu22.04, the following requirements must be met:
+```bash
+export STREAMS_DIR="/path/to/your/StreamsML/streams"
+export STREAMS_UTILS_DIR="/path/to/your/StreamsML/streams-utils"
+```
+
+For example:
+
+```bash
+export STREAMS_DIR="/home/username/Desktop/StreamsML/streams"
+export STREAMS_UTILS_DIR="/home/username/Desktop/StreamsML/streams-utils"
+```
+
+### 3. Install dependencies
+
+```bash
+chmod +x install_dependencies.sh
+bash install_dependencies.sh
+```
+
+If Apptainer is not installed successfully by the script, install it separately using the [official Apptainer documentation](https://apptainer.org/docs/admin/main/installation.html).
+
+### 4. Build the containerized software stack
+
+From `streams-utils/`, run:
+
+```bash
+just nv
+just base
+just build
+```
+
+This produces the final `streams.sif` container used to run the software.
+
+## Build overview
+
+The build process uses three main layers:
+
+- **NVIDIA HPC SDK container** — provides the base compiler and CUDA-capable HPC environment
+- **`base.apptainer`** — installs required software such as Python packages and system dependencies
+- **`build.apptainer`** — compiles the Fortran and Rust components and assembles the runnable StreamsML environment
+
+Before building, make sure your system satisfies the CUDA/driver requirements for the NVIDIA HPC SDK tag used in this repository, included below:
 
 ![Nvidia HPC SDK system requirements](streams/svgs/NvidiaHPCsysreq.png)
 
-Complete tag information can be found at https://docs.nvidia.com/hpc-sdk/archive/24.7/hpc-sdk-release-notes/index.html  
-Other tags can be found here: https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nvhpc/tags
+## Configure and run a standard simulation
 
-### Build
+### 1. Choose the flow type
 
-Now that the setup has been completed, the remaining build becomes a simple sequence of three terminal commands.
+In the `Justfile`, select one of the two flow configurations:
 
-> **From the streams-utils directory, run the following commands:**
->
-> ```bash
-> just nv
-> just base
-> just build
-> ```
+```make
+# streams_flow_type := "shock-boundary-layer"
+# streams_flow_type := "boundary-layer"
+```
 
-after which the software is built and all further interaction with the software is completed by editing the parameters in the Justfile, a document found in that same streams-utils directory.
+### 2. Edit the `config` recipe
 
-## Configuring and Running a Standard Simulation
+The main user interface is the `config` recipe in the `Justfile`. This is where you choose:
 
-> - Configuring and running  a standard simulation  
->   - Edit the config recipe of the justfile, selecting simulation type, control type, and all parameters related to the two.  
->   - Copy the relevant config recipe found in the **JustfileExamples** folder to efficiently collect the flags required for your simulation and control type.  
->   - Type "just help tree" for all possible arguments of a given recipe and the use of each flag  
->   - Run "just config" to generate the necessary files for the run using the flags from the config recipe  
-> - Run  
->   - Start the simulation with "just run"
-##
+- simulation parameters,
+- control strategy and algorithm,
+- actuator settings,
+- training and evaluation settings, and
+- output/checkpoint locations.
 
-### Configuring and Running a Standard Simulation
+Control strategies are grouped into categories such as open-loop, classical, and learning-based. The README example uses a learning-based DDPG configuration, but the utilities support multiple choices depending on the selected mode.
 
-The first decision to make is whether you would like to run a simulation of a boundary layer (BL) flow or shock-boundary layer interaction flow (SBLI).
+A shortened example looks like this:
 
-> Uncomment the option you would like to run, around lines 36-37.
->
-> ```text
-> # streams_flow_type := "shock-boundary-layer"
-> # streams_flow_type := "boundary-layer"
-> ```
-
-Next, the config section, the heart of the user interface where simulation and control method parameters are selected. As seen below, there are two offset columns of options. The first contains options pertaining to configuring the simulation itself, such as the mach number and grid specifications, and the second has options pertaining to the control method, which itself is specified at the interface of the two columns, here seen to be learning-based ddpg.
-
-The first column of options are used for all simulations. As previously mentioned, the control strategy (here learning-based) and method (here ddpg) are selected at the interface of the first and second columns. There are three control strategy groups (open-loop, classical, and learning-based) and within each there are a certain number of algorithms that may be chosen. For example, learning-based has the control strategies of ddpg, ppo, and dqn available. The control method and control strategy determine the options the second column is required to contain.
-
-> Populate the config recipe of the justfile with flags and values corresponding to the simulation you would like to run
-
-**Please see the justfile examples folder for a comprehensive set of configuration templates.**
-
-```text
+```make
 config:
 	echo {{config_output}}
-
-	# 600, 208, 100
 
 	cargo r -- \
 		config-generator {{config_output}} {{streams_flow_type}} \
@@ -135,38 +127,44 @@ config:
 		--mach-number 2.28 \
 		--x-divisions 600 \
 		--y-divisions 208 \
-            ...
+		... \
 		--use-python \
-		--nymax-wr 201 \
-		--sensor-threshold 0.1 \
 		learning-based ddpg \
 		    --slot-start 100 \
 		    --slot-end 149 \
 		    --train-episodes 2 \
 		    --training-output {{training}} \
 		    --eval-episodes 2 \
-		    --eval-max-steps 6 \
 		    --eval-output {{eval}} \
-		    --checkpoint-interval 5 \
-		    --checkpoint-dir {{checkpoint}} \
-		    --seed 42 \
-		    --amplitude 1.0 \
-		    --learning-rate 0.0003 \
-		    --gamma 0.99 \
-		    --tau 0.005 \
-		    --buffer-size 100000
+		    --checkpoint-dir {{checkpoint}}
 ```
 
-> **After you have selected your preferred simulation and control parameters in the justfile, return to the terminal and run**
->
-> ```bash
-> just config
-> ```
->
-> **The simulation has been configured and can now be run by running**
->
-> ```bash
-> just run
-> ```
->
-> **in the terminal.**
+Use the templates in `JustfileExamples/` to quickly assemble valid configurations.
+
+You can also inspect the available flags with:
+
+```bash
+just help tree
+```
+
+### 3. Generate the run configuration
+
+```bash
+just config
+```
+
+### 4. Launch the simulation
+
+```bash
+just run
+```
+
+## Notes for users
+
+- The README is intentionally a quick-start guide.
+- More detailed instructions for modeling, analysis, visualization, and adding new methods are provided in the linked PDF documentation, [Detailed user instructions (PDF)](streams/svgs/StreamsMLmanual.pdf)
+- Most user-facing configuration happens through the `Justfile` and the `streams-utils/` tooling rather than through a polished standalone CLI.
+
+## Why this README is structured this way
+
+StreamsML serves two audiences: someone evaluating the project at a glance, and someone trying to actually build and run it. This README keeps the top of the page focused on what the project is and why it exists, then moves quickly into the minimum steps needed to build and run a standard case.
